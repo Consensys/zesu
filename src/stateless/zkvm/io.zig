@@ -17,11 +17,10 @@ const std = @import("std");
 
 /// Read all private input bytes (stdin in native builds).
 pub fn read_input(allocator: std.mem.Allocator) ![]const u8 {
-    const stdin = std.fs.File{ .handle = std.posix.STDIN_FILENO };
-    var list = std.ArrayListUnmanaged(u8){};
+    var list = std.ArrayListUnmanaged(u8).empty;
     var chunk: [4096]u8 = undefined;
     while (true) {
-        const n = try stdin.read(&chunk);
+        const n = try std.posix.read(std.posix.STDIN_FILENO, &chunk);
         if (n == 0) break;
         try list.appendSlice(allocator, chunk[0..n]);
     }
@@ -30,6 +29,10 @@ pub fn read_input(allocator: std.mem.Allocator) ![]const u8 {
 
 /// Write public output bytes (stdout in native builds).
 pub fn write_output(data: []const u8) void {
-    const stdout = std.fs.File{ .handle = std.posix.STDOUT_FILENO };
-    stdout.writeAll(data) catch {};
+    var remaining = data;
+    while (remaining.len > 0) {
+        const n = std.c.write(std.posix.STDOUT_FILENO, remaining.ptr, remaining.len);
+        if (n <= 0) break;
+        remaining = remaining[@intCast(n)..];
+    }
 }

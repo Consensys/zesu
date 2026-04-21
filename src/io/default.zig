@@ -12,12 +12,8 @@ const std = @import("std");
 
 // Cached input buffer — allocated once on first read_input call.
 var input_buf: ?[]const u8 = null;
-var input_buf_mutex: std.Thread.Mutex = .{};
 
 pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
-    input_buf_mutex.lock();
-    defer input_buf_mutex.unlock();
-
     if (input_buf) |buf| {
         buf_ptr.* = buf.ptr;
         buf_size.* = buf.len;
@@ -25,22 +21,26 @@ pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
     }
 
     const allocator = std.heap.c_allocator;
-    const data = blk: {
-        if (std.posix.getenv("ZESU_INPUT")) |path| {
-            const file = std.fs.cwd().openFile(path, .{}) catch {
-                buf_ptr.* = @ptrFromInt(1); // non-null sentinel
+    const data: []u8 = blk: {
+        if (std.c.getenv("ZESU_INPUT")) |path_z| {
+            const fd = std.posix.openatZ(
+                std.posix.AT.FDCWD,
+                path_z,
+                .{},
+                0,
+            ) catch {
+                buf_ptr.* = @ptrFromInt(1);
                 buf_size.* = 0;
                 return;
             };
-            defer file.close();
-            break :blk file.readToEndAlloc(allocator, std.math.maxInt(usize)) catch {
+            defer _ = std.c.close(fd);
+            break :blk readFd(allocator, fd) catch {
                 buf_ptr.* = @ptrFromInt(1);
                 buf_size.* = 0;
                 return;
             };
         } else {
-            const stdin_file = std.fs.File{ .handle = 0 };
-            break :blk stdin_file.readToEndAlloc(allocator, std.math.maxInt(usize)) catch {
+            break :blk readFd(allocator, std.posix.STDIN_FILENO) catch {
                 buf_ptr.* = @ptrFromInt(1);
                 buf_size.* = 0;
                 return;
@@ -53,7 +53,22 @@ pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
     buf_size.* = data.len;
 }
 
+fn readFd(allocator: std.mem.Allocator, fd: std.posix.fd_t) ![]u8 {
+    var list = std.ArrayListUnmanaged(u8).empty;
+    var chunk: [4096]u8 = undefined;
+    while (true) {
+        const n = try std.posix.read(fd, &chunk);
+        if (n == 0) break;
+        try list.appendSlice(allocator, chunk[0..n]);
+    }
+    return list.items;
+}
+
 pub fn write_output(output: []const u8) void {
-    const stdout = std.fs.File{ .handle = 1 };
-    stdout.writeAll(output) catch {};
+    var remaining = output;
+    while (remaining.len > 0) {
+        const n = std.c.write(std.posix.STDOUT_FILENO, remaining.ptr, remaining.len);
+        if (n <= 0) break;
+        remaining = remaining[@intCast(n)..];
+    }
 }

@@ -51,12 +51,12 @@ pub const Chain = struct {
     ) Chain {
         var c = Chain{
             .arena = std.heap.ArenaAllocator.init(backing),
-            .current_alloc = .{},
-            .headers = .{},
+            .current_alloc = .empty,
+            .headers = .empty,
             .fork = fork,
         };
         const alloc = c.arena.allocator();
-        c.current_alloc = cloneAllocMap(alloc, genesis_alloc) catch .{};
+        c.current_alloc = cloneAllocMap(alloc, genesis_alloc) catch .empty;
         var gh = genesis_header;
         gh.extra_data = alloc.dupe(u8, genesis_header.extra_data) catch &.{};
         c.headers.append(alloc, gh) catch {};
@@ -332,7 +332,7 @@ fn decodeWithdrawals(alloc: std.mem.Allocator, after_hdr: []const u8) ![]types.W
         .bytes => return &.{},
     };
 
-    var wds = std.ArrayListUnmanaged(types.Withdrawal){};
+    var wds = std.ArrayListUnmanaged(types.Withdrawal).empty;
     var rest = wd_payload;
     while (rest.len > 0) {
         const wd_item = try rlp_dec.decodeItem(rest);
@@ -381,7 +381,7 @@ fn cloneAllocMap(arena: std.mem.Allocator, src: AllocMap) !AllocMap {
     while (it.next()) |entry| {
         var acct = entry.value_ptr.*;
         acct.code = try arena.dupe(u8, acct.code);
-        var new_storage = std.AutoHashMapUnmanaged(u256, u256){};
+        var new_storage = std.AutoHashMapUnmanaged(u256, u256).empty;
         var sit = acct.storage.iterator();
         while (sit.next()) |se|
             try new_storage.put(arena, se.key_ptr.*, se.value_ptr.*);

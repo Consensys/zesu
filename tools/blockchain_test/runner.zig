@@ -191,7 +191,7 @@ pub fn runFixture(
 
         // ── Chain state threaded across blocks ───────────────────────────────
         var chain_alloc = pre_alloc;
-        var block_hashes_list = std.ArrayListUnmanaged(executor_types.BlockHashEntry){};
+        var block_hashes_list = std.ArrayListUnmanaged(executor_types.BlockHashEntry).empty;
         try block_hashes_list.append(alloc, .{ .number = genesis_number, .hash = genesis_hash });
         var last_valid_hash = genesis_hash;
         var test_failed = false;
@@ -270,9 +270,10 @@ pub fn runFixture(
             // Decode transactions.
             const txs = executor_tx_decode.decodeTxs(alloc, raw_txs) catch |err| {
                 if (!quiet and json_output) {
-                    var out = std.ArrayListUnmanaged(u8){};
+                    var out = std.ArrayListUnmanaged(u8).empty;
                     defer out.deinit(alloc);
-                    try output.writeTxDecodeError(out.writer(alloc), test_name, env.number, @errorName(err), test_description);
+                    const w: output.ListWriter = .{ .list = &out, .alloc = alloc };
+                    try output.writeTxDecodeError(w, test_name, env.number, @errorName(err), test_description);
                     std.debug.print("{s}\n", .{out.items});
                 }
                 test_failed = true;
@@ -362,11 +363,12 @@ pub fn runFixture(
                     std.debug.print("FAIL {s} ReceiptsOK={} StateOK={} BalOK={}\n", .{ test_name, receipts_ok, state_ok, bal_ok });
                 }
                 if (!quiet and json_output) {
-                    var out = std.ArrayListUnmanaged(u8){};
+                    var out = std.ArrayListUnmanaged(u8).empty;
                     defer out.deinit(alloc);
+                    const w: output.ListWriter = .{ .list = &out, .alloc = alloc };
                     try output.writeBlockMismatch(
                         alloc,
-                        out.writer(alloc),
+                        w,
                         test_name,
                         test_description,
                         state_ok,
@@ -392,9 +394,10 @@ pub fn runFixture(
         } else {
             stats.failed += 1;
             if (!quiet and json_output and !test_failed and !lbh_ok) {
-                var out = std.ArrayListUnmanaged(u8){};
+                var out = std.ArrayListUnmanaged(u8).empty;
                 defer out.deinit(alloc);
-                try output.writeLastBlockHashMismatch(out.writer(alloc), test_name, expected_lastblockhash, last_valid_hash, test_description);
+                const w: output.ListWriter = .{ .list = &out, .alloc = alloc };
+                try output.writeLastBlockHashMismatch(w, test_name, expected_lastblockhash, last_valid_hash, test_description);
                 std.debug.print("{s}\n", .{out.items});
             }
             if (stop_on_fail) return false;
@@ -488,7 +491,7 @@ fn buildEnv(
     // Withdrawals from block entry.
     if (b0.get("withdrawals")) |wv| {
         if (wv == .array) {
-            var wds = std.ArrayListUnmanaged(Withdrawal){};
+            var wds = std.ArrayListUnmanaged(Withdrawal).empty;
             for (wv.array.items) |wd_v| {
                 if (wd_v != .object) continue;
                 const wo = wd_v.object;

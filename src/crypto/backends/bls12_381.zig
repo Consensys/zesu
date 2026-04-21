@@ -167,7 +167,7 @@ pub fn bls12G1MsmRun(input: []const u8, gas_limit: u64) T.PrecompileResult {
     }
 
     // Parse point-scalar pairs
-    var pairs = std.ArrayListUnmanaged(G1PointScalarPair){};
+    var pairs = std.ArrayListUnmanaged(G1PointScalarPair).empty;
     defer pairs.deinit(alloc_mod.get());
     pairs.ensureTotalCapacity(alloc_mod.get(), k) catch {
         return T.PrecompileResult{ .err = T.PrecompileError.OutOfGas };
@@ -291,7 +291,7 @@ pub fn bls12G2MsmRun(input: []const u8, gas_limit: u64) T.PrecompileResult {
     }
 
     // Parse point-scalar pairs
-    var pairs = std.ArrayListUnmanaged(G2PointScalarPair){};
+    var pairs = std.ArrayListUnmanaged(G2PointScalarPair).empty;
     defer pairs.deinit(alloc_mod.get());
     pairs.ensureTotalCapacity(alloc_mod.get(), k) catch {
         return T.PrecompileResult{ .err = T.PrecompileError.OutOfGas };
@@ -371,7 +371,7 @@ pub fn bls12PairingRun(input: []const u8, gas_limit: u64) T.PrecompileResult {
     }
 
     // Parse pairs
-    var pairs = std.ArrayListUnmanaged(G1G2Pair){};
+    var pairs = std.ArrayListUnmanaged(G1G2Pair).empty;
     defer pairs.deinit(alloc_mod.get());
     pairs.ensureTotalCapacity(alloc_mod.get(), num_pairs) catch {
         return T.PrecompileResult{ .err = T.PrecompileError.OutOfGas };

@@ -135,7 +135,7 @@ pub fn parseAlloc(
     });
     defer parsed.deinit();
 
-    var map = std.AutoHashMapUnmanaged(Address, AllocAccount){};
+    var map = std.AutoHashMapUnmanaged(Address, AllocAccount).empty;
     const root = switch (parsed.value) {
         .object => |o| o,
         else => return map,
@@ -244,7 +244,7 @@ pub fn parseEnv(alloc: std.mem.Allocator, json_text: []const u8) !Env {
     // blockHashes: {"0x1": "0xhash", ...} or {"1": "0xhash", ...}
     if (obj.get("blockHashes")) |bhv| {
         if (bhv == .object) {
-            var bh_list = std.ArrayListUnmanaged(BlockHashEntry){};
+            var bh_list = std.ArrayListUnmanaged(BlockHashEntry).empty;
             var bit = bhv.object.iterator();
             while (bit.next()) |bhe| {
                 const num = hexToU64(bhe.key_ptr.*) catch
@@ -266,7 +266,7 @@ pub fn parseEnv(alloc: std.mem.Allocator, json_text: []const u8) !Env {
     // withdrawals (Shanghai+)
     if (obj.get("withdrawals")) |wv| {
         if (wv == .array) {
-            var wds = std.ArrayListUnmanaged(Withdrawal){};
+            var wds = std.ArrayListUnmanaged(Withdrawal).empty;
             for (wv.array.items) |wd_v| {
                 if (wd_v != .object) continue;
                 const wo = wd_v.object;
@@ -305,7 +305,7 @@ pub fn parseTxs(alloc: std.mem.Allocator, json_text: []const u8) ![]TxInput {
         else => return &.{},
     };
 
-    var txs = std.ArrayListUnmanaged(TxInput){};
+    var txs = std.ArrayListUnmanaged(TxInput).empty;
     for (arr.items) |tx_v| {
         const tx_obj = switch (tx_v) {
             .object => |o| o,
@@ -386,7 +386,7 @@ fn parseTxObject(alloc: std.mem.Allocator, obj: std.json.ObjectMap) !TxInput {
     // Access list (EIP-2930)
     if (obj.get("accessList")) |alv| {
         if (alv == .array) {
-            var al = std.ArrayListUnmanaged(AccessListEntry){};
+            var al = std.ArrayListUnmanaged(AccessListEntry).empty;
             for (alv.array.items) |al_item| {
                 if (al_item != .object) continue;
                 const alo = al_item.object;
@@ -395,7 +395,7 @@ fn parseTxObject(alloc: std.mem.Allocator, obj: std.json.ObjectMap) !TxInput {
                 else
                     [_]u8{0} ** 20;
 
-                var keys = std.ArrayListUnmanaged(Hash){};
+                var keys = std.ArrayListUnmanaged(Hash).empty;
                 if (alo.get("storageKeys")) |skv| {
                     if (skv == .array) {
                         for (skv.array.items) |sk_item| {
@@ -418,7 +418,7 @@ fn parseTxObject(alloc: std.mem.Allocator, obj: std.json.ObjectMap) !TxInput {
     // EIP-4844
     if (obj.get("blobVersionedHashes")) |bvhv| {
         if (bvhv == .array) {
-            var hashes = std.ArrayListUnmanaged(Hash){};
+            var hashes = std.ArrayListUnmanaged(Hash).empty;
             for (bvhv.array.items) |h_item| {
                 if (jsonStr(h_item)) |s| {
                     const hash = hexToHash(s) catch [_]u8{0} ** 32;

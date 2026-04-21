@@ -15,13 +15,13 @@ const mpt = @import("mpt");
 /// Compute logsHash: keccak256 of the RLP-encoded list of all logs across all transactions.
 /// Each log is encoded as RLP([address, [topic1, ...], data]).
 pub fn computeLogsHash(alloc: std.mem.Allocator, receipts: []const types.Receipt) ![32]u8 {
-    var log_items = std.ArrayListUnmanaged([]const u8){};
+    var log_items = std.ArrayListUnmanaged([]const u8).empty;
     defer log_items.deinit(alloc);
 
     for (receipts) |receipt| {
         for (receipt.logs) |log| {
             // topics list
-            var topic_items = std.ArrayListUnmanaged([]const u8){};
+            var topic_items = std.ArrayListUnmanaged([]const u8).empty;
             defer topic_items.deinit(alloc);
             for (log.topics) |t| try topic_items.append(alloc, try rlp.encodeBytes(alloc, &t));
             const topics_enc = try rlp.encodeList(alloc, topic_items.items);
@@ -228,7 +228,7 @@ fn computeStorageRoot(
 ) ![32]u8 {
     if (account.pre_storage_root) |old_root| {
         var root = old_root;
-        var extra = std.ArrayListUnmanaged([]const u8){};
+        var extra = std.ArrayListUnmanaged([]const u8).empty;
         defer extra.deinit(alloc);
         var it = account.storage.iterator();
         while (it.next()) |entry| {
@@ -259,9 +259,9 @@ fn encodeAccountRlp(
 
 fn encodeReceiptRlp(alloc: std.mem.Allocator, receipt: types.Receipt) ![]u8 {
     // Encode logs
-    var log_items = std.ArrayListUnmanaged([]const u8){};
+    var log_items = std.ArrayListUnmanaged([]const u8).empty;
     for (receipt.logs) |log| {
-        var topic_items = std.ArrayListUnmanaged([]const u8){};
+        var topic_items = std.ArrayListUnmanaged([]const u8).empty;
         for (log.topics) |t| try topic_items.append(alloc, try rlp.encodeBytes(alloc, &t));
         const log_parts = [_][]const u8{
             try rlp.encodeBytes(alloc, &log.address),
@@ -310,9 +310,9 @@ fn encodeTxBytes(
     const s = s_override orelse tx.s orelse 0;
 
     // Encode access list
-    var al_items = std.ArrayListUnmanaged([]const u8){};
+    var al_items = std.ArrayListUnmanaged([]const u8).empty;
     for (tx.access_list) |entry| {
-        var key_items = std.ArrayListUnmanaged([]const u8){};
+        var key_items = std.ArrayListUnmanaged([]const u8).empty;
         for (entry.storage_keys) |key| try key_items.append(alloc, try rlp.encodeBytes(alloc, &key));
         const al_entry_parts = [_][]const u8{
             try rlp.encodeBytes(alloc, &entry.address),

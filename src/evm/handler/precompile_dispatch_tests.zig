@@ -212,7 +212,7 @@ test "executeFrame: CREATE tx with STOP init code deploys successfully" {
     parts.ctx.tx.value = 0;
     parts.ctx.tx.kind = .Create;
     parts.ctx.tx.data = blk: {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         try list.appendSlice(ALLOC, &init_code);
         break :blk list;
     };
@@ -258,7 +258,7 @@ test "executeFrame: CREATE tx with REVERT init code fails gracefully" {
     parts.ctx.tx.value = 0;
     parts.ctx.tx.kind = .Create;
     parts.ctx.tx.data = blk: {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         try list.appendSlice(ALLOC, &init_code);
         break :blk list;
     };

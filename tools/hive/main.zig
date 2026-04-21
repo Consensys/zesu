@@ -14,20 +14,18 @@ const genesis = @import("genesis.zig");
 const chain_mod = @import("chain.zig");
 const rpc = @import("rpc.zig");
 
-pub fn main() !void {
-    var gpa = std.heap.DebugAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const backing = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const backing = init.gpa;
 
     var arena = std.heap.ArenaAllocator.init(backing);
     defer arena.deinit();
     const alloc = arena.allocator();
 
     // ── Fork schedule from environment ────────────────────────────────────────
-    const fork = fork_env.loadFromEnv();
+    const fork = fork_env.loadFromEnv(init.environ_map);
 
     // ── Parse genesis ─────────────────────────────────────────────────────────
-    const genesis_json = std.fs.cwd().readFileAlloc(alloc, "/genesis.json", 64 * 1024 * 1024) catch |err| {
+    const genesis_json = std.Io.Dir.cwd().readFileAlloc(init.io, "/genesis.json", alloc, .limited(64 * 1024 * 1024)) catch |err| {
         std.debug.print("hive-rlp: cannot read /genesis.json: {}\n", .{err});
         std.process.exit(1);
     };
@@ -65,7 +63,7 @@ pub fn main() !void {
     std.debug.print("hive-rlp: genesis hash 0x{x}\n", .{g.hash});
 
     // ── Import blocks ─────────────────────────────────────────────────────────
-    importBlocks(alloc, &chain) catch |err| {
+    importBlocks(init.io, alloc, &chain) catch |err| {
         std.debug.print("hive-rlp: block import warning: {}\n", .{err});
         // Non-fatal: serve with whatever blocks we have
     };
@@ -74,23 +72,23 @@ pub fn main() !void {
 
     // ── Serve JSON-RPC ────────────────────────────────────────────────────────
     std.debug.print("hive-rlp: listening on :8545\n", .{});
-    try rpc.serve(&chain);
+    try rpc.serve(init.io, &chain);
 }
 
 /// Read and import all /blocks/NNNN.rlp files in sorted order.
-fn importBlocks(alloc: std.mem.Allocator, chain: *chain_mod.Chain) !void {
-    var blocks_dir = std.fs.openDirAbsolute("/blocks", .{ .iterate = true }) catch return;
-    defer blocks_dir.close();
+fn importBlocks(io: std.Io, alloc: std.mem.Allocator, chain: *chain_mod.Chain) !void {
+    var blocks_dir = std.Io.Dir.openDirAbsolute(io, "/blocks", .{ .iterate = true }) catch return;
+    defer blocks_dir.close(io);
 
     // Collect file names
-    var names = std.ArrayList([]u8){};
+    var names = std.ArrayListUnmanaged([]u8).empty;
     defer {
         for (names.items) |n| alloc.free(n);
         names.deinit(alloc);
     }
 
     var iter = blocks_dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".rlp")) continue;
         try names.append(alloc, try alloc.dupe(u8, entry.name));
@@ -104,7 +102,7 @@ fn importBlocks(alloc: std.mem.Allocator, chain: *chain_mod.Chain) !void {
     }.lt);
 
     for (names.items) |name| {
-        const block_rlp = blocks_dir.readFileAlloc(alloc, name, 32 * 1024 * 1024) catch continue;
+        const block_rlp = blocks_dir.readFileAlloc(io, name, alloc, .limited(32 * 1024 * 1024)) catch continue;
         chain.importBlock(block_rlp);
     }
 }

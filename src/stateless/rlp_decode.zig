@@ -146,7 +146,7 @@ pub fn decodeMinimalHeader(raw: []const u8) error{InvalidBlock}!MinimalHeader {
 /// Decode the withdrawals list RLP payload (EIP-4895, Shanghai+).
 /// Each withdrawal is RLP([index, validatorIndex, address, amount]).
 pub fn decodeWithdrawals(alloc: std.mem.Allocator, payload: []const u8) ![]const input.Withdrawal {
-    var wds = std.ArrayListUnmanaged(input.Withdrawal){};
+    var wds = std.ArrayListUnmanaged(input.Withdrawal).empty;
     var rest = payload;
     while (rest.len > 0) {
         const wr = mpt.rlp.decodeItem(rest) catch break;
@@ -172,7 +172,7 @@ pub fn decodeWithdrawals(alloc: std.mem.Allocator, payload: []const u8) ![]const
 /// Decode the block body's transaction list RLP payload into decoded Transactions.
 /// Each entry is either a legacy RLP list or an EIP-2718 typed tx (byte string).
 pub fn decodeTxList(allocator: std.mem.Allocator, payload: []const u8) ![]const input.Transaction {
-    var txns = std.ArrayListUnmanaged(input.Transaction){};
+    var txns = std.ArrayListUnmanaged(input.Transaction).empty;
     var rest = payload;
     while (rest.len > 0) {
         const r = mpt.rlp.decodeItem(rest) catch return error.InvalidBlock;
@@ -399,7 +399,7 @@ fn txAccessList(alloc: std.mem.Allocator, rest: *[]const u8) ![]const input.Acce
     };
     rest.* = rest.*[r.consumed..];
 
-    var entries = std.ArrayListUnmanaged(input.AccessListEntry){};
+    var entries = std.ArrayListUnmanaged(input.AccessListEntry).empty;
     var al = al_payload;
     while (al.len > 0) {
         const er = mpt.rlp.decodeItem(al) catch return error.InvalidBlock;
@@ -424,7 +424,7 @@ fn txAccessList(alloc: std.mem.Allocator, rest: *[]const u8) ![]const input.Acce
             .list => |p| p,
             .bytes => return error.InvalidBlock,
         };
-        var keys = std.ArrayListUnmanaged(primitives.Hash){};
+        var keys = std.ArrayListUnmanaged(primitives.Hash).empty;
         var kp = kp_payload;
         while (kp.len > 0) {
             const k_r = mpt.rlp.decodeItem(kp) catch return error.InvalidBlock;
@@ -453,7 +453,7 @@ fn txHashList(alloc: std.mem.Allocator, rest: *[]const u8) ![]const primitives.H
         .bytes => return error.InvalidBlock,
     };
     rest.* = rest.*[r.consumed..];
-    var hashes = std.ArrayListUnmanaged(primitives.Hash){};
+    var hashes = std.ArrayListUnmanaged(primitives.Hash).empty;
     var p = payload;
     while (p.len > 0) {
         const hr = mpt.rlp.decodeItem(p) catch return error.InvalidBlock;
@@ -477,7 +477,7 @@ fn txAuthList(alloc: std.mem.Allocator, rest: *[]const u8) ![]const input.Author
         .bytes => return error.InvalidBlock,
     };
     rest.* = rest.*[r.consumed..];
-    var items = std.ArrayListUnmanaged(input.AuthorizationTuple){};
+    var items = std.ArrayListUnmanaged(input.AuthorizationTuple).empty;
     var p = payload;
     while (p.len > 0) {
         const ir = mpt.rlp.decodeItem(p) catch return error.InvalidBlock;
