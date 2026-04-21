@@ -383,8 +383,7 @@ pub fn build(b: *std.Build) void {
     zkevm_test_exe.root_module.addImport("executor", executor_module);
     addCryptoLibraries(zkevm_test_exe, crypto_include, libblst_path, libmcl_path, is_linux);
     b.installArtifact(zkevm_test_exe);
-    addRunStep(b, "zkevm-tests", "Run zkevm blockchain test fixtures", zkevm_test_exe,
-        &.{ "--fixtures", "spec-tests/fixtures/zkevm/blockchain_tests" });
+    addRunStep(b, "zkevm-tests", "Run zkevm blockchain test fixtures", zkevm_test_exe, &.{ "--fixtures", "spec-tests/fixtures/zkevm/blockchain_tests" });
 
     // ── hive-rlp: Hive consume-rlp execution client ───────────────────────────
 
