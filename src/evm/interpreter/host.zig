@@ -685,6 +685,14 @@ fn setupCallCore(js: anytype, host: *Host, inputs: CallInputs, frame_depth: usiz
         {
             js.emitTransferLog(inputs.caller, inputs.target, inputs.value);
         }
+    } else if (inputs.value == 0 and inputs.scheme == .call and
+        !primitives.isEnabledIn(host.cfg.spec, .spurious_dragon) and
+        callee_acc.isLoadedAsNotExistingNotTouched())
+    {
+        // Pre-EIP-161 (Frontier/Homestead): a zero-value CALL to a non-existent address
+        // still creates it as an empty account ("touches" it). EIP-161 (Spurious Dragon)
+        // removed empty accounts on touch, making this a no-op; we skip it for those forks.
+        js.touchAccount(inputs.callee);
     }
 
     return .{ .ready = .{ .checkpoint = checkpoint, .code = code, .delegation_gas = delegation_gas } };

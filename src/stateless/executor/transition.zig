@@ -892,6 +892,19 @@ pub fn transitionWithContext(
                 return if (sender_info.nonce > tx_nonce) error.NonceMismatch else error.NonceMismatchTooHigh;
             }
 
+            // EIP-2681: CREATE is invalid when sender nonce == maxInt(u64) (would overflow on increment).
+            if (tx.to == null and sender_info.nonce == std.math.maxInt(u64)) {
+                ctx.journaled_state.discardTx();
+                if (ctx.tx.data) |*d| d.deinit(alloc_mod.get());
+                ctx.tx.data = null;
+                ctx.tx.access_list.deinit();
+                if (ctx.tx.blob_hashes) |*bh| bh.deinit(alloc_mod.get());
+                ctx.tx.blob_hashes = null;
+                if (ctx.tx.authorization_list) |*al| al.deinit(alloc_mod.get());
+                ctx.tx.authorization_list = null;
+                return error.NonceIsMax;
+            }
+
             // Base fee check (EIP-1559): gas_price (= maxFeePerGas for type 2/3/4) must cover basefee.
             if (!ctx.cfg.disable_base_fee) {
                 if (ctx.tx.gas_price < ctx.block.basefee) {

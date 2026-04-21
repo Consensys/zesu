@@ -196,8 +196,10 @@ fn runInner(
     var exp_highp_bytes: [32]u8 = [_]u8{0} ** 32;
     if (input.len > exp_start) {
         const available = @min(exp_highp_len, input.len - exp_start);
-        const padding = 32 - available;
-        @memcpy(exp_highp_bytes[padding..], input[exp_start..][0..available]);
+        // Place available bytes at the MSB side of the 32-byte big-endian representation.
+        // Remaining (exp_highp_len - available) bytes are implicitly zero (right-padding for truncated input).
+        const padding = 32 - exp_highp_len;
+        @memcpy(exp_highp_bytes[padding..][0..available], input[exp_start..][0..available]);
     }
     const exp_highp = extractU256(&exp_highp_bytes);
 
