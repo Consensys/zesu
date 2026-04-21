@@ -11,9 +11,12 @@
 const std = @import("std");
 
 // Cached input buffer — allocated once on first read_input call.
+var input_buf_mutex: std.atomic.Mutex = .unlocked;
 var input_buf: ?[]const u8 = null;
 
 pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
+    while (!input_buf_mutex.tryLock()) {}
+    defer input_buf_mutex.unlock();
     if (input_buf) |buf| {
         buf_ptr.* = buf.ptr;
         buf_size.* = buf.len;
