@@ -1,4 +1,4 @@
-# zevm-stateless Hive consume-rlp client
+# zesu Hive consume-rlp client
 #
 # Build stage: compile the hive-rlp binary
 FROM debian:bookworm-slim AS build
@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config gcc g++ clang libc++-dev libc++abi-dev libgmp-dev libc-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Zig 0.15.0
-ARG ZIG_VERSION=0.15.1
+# Install Zig 0.15.2
+ARG ZIG_VERSION=0.15.2
 ARG TARGETARCH
 RUN case "${TARGETARCH:-amd64}" in \
         amd64) ZIG_ARCH=x86_64 ;; \
@@ -43,8 +43,9 @@ RUN git clone --depth=1 https://github.com/herumi/mcl.git /tmp/mcl && \
     rm -rf /tmp/mcl
 
 WORKDIR /src
-COPY zevm-stateless/ .
-COPY zevm/ /zevm
+COPY build.zig* ./
+COPY src ./
+COPY tools ./
 
 # Build the hive-rlp binary (ReleaseFast for container use)
 RUN zig build hive-rlp -Doptimize=ReleaseFast
