@@ -63,16 +63,10 @@ clients:
 
 ## 3. Iterating on changes
 
-After editing source files, re-sync and rebuild:
+After editing source files, rebuild from the `zesu` repo root:
 
 ```bash
-# From the zesu repo root:
-rsync -a --delete \
-  --exclude='spec-tests/' --exclude='zig-out/' --exclude='.zig-cache/' \
-  . /tmp/zesu-hive-build/
-
-cd /tmp/zesu-hive-build
-docker build -t zesu:latest -f tools/hive/Dockerfile .
+DOCKER_BUILDKIT=0 docker build -t zesu:latest -f ./tools/hive/Dockerfile .
 ```
 
 Then re-run the Hive command.

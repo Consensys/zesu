@@ -855,7 +855,7 @@ test "BLS12-381 G2 Add - out of gas" {
 }
 
 test "BLS12-381 G1 MSM - out of gas" {
-    var input: [192]u8 = undefined;
+    var input: [160]u8 = undefined; // 1 pair: 128-byte padded G1 + 32-byte scalar
     @memset(&input, 0);
 
     const impls = @import("precompile_implementations");
@@ -866,7 +866,7 @@ test "BLS12-381 G1 MSM - out of gas" {
 }
 
 test "BLS12-381 G2 MSM - out of gas" {
-    var input: [320]u8 = undefined;
+    var input: [288]u8 = undefined; // 1 pair: 256-byte padded G2 + 32-byte scalar
     @memset(&input, 0);
 
     const impls = @import("precompile_implementations");

@@ -37,21 +37,36 @@ pub fn build(b: *std.Build) void {
             blst: []const u8,
             mcl: []const u8,
             linux: bool,
+            use_secp: bool,
+            use_ossl: bool,
+            use_blst: bool,
+            use_mcl: bool,
         ) void {
+            if (!use_secp and !use_ossl and !use_blst and !use_mcl) return;
             step.addIncludePath(.{ .cwd_relative = inc });
-            step.linkSystemLibrary("secp256k1");
-            step.linkSystemLibrary("ssl");
-            step.linkSystemLibrary("crypto");
             step.linkSystemLibrary("c");
             step.linkSystemLibrary("m");
-            step.addObjectFile(.{ .cwd_relative = blst });
-            if (linux) {
-                step.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
-                step.linkSystemLibrary("mcl");
-            } else {
-                step.addObjectFile(.{ .cwd_relative = mcl });
-                step.linkLibCpp();
+            if (use_secp) step.linkSystemLibrary("secp256k1");
+            if (use_ossl) {
+                step.linkSystemLibrary("ssl");
+                step.linkSystemLibrary("crypto");
             }
+            if (use_blst) step.addObjectFile(.{ .cwd_relative = blst });
+            if (use_mcl) {
+                if (linux) {
+                    step.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+                    step.linkSystemLibrary("mcl");
+                } else {
+                    step.addObjectFile(.{ .cwd_relative = mcl });
+                    step.linkLibCpp();
+                }
+            }
+        }
+    }.add;
+
+    const addAllCryptoLibraries = struct {
+        fn add(step: *std.Build.Step.Compile, inc: []const u8, blst: []const u8, mcl: []const u8, linux: bool) void {
+            addCryptoLibraries(step, inc, blst, mcl, linux, true, true, true, true);
         }
     }.add;
 
@@ -394,7 +409,7 @@ pub fn build(b: *std.Build) void {
     stateless_exe.root_module.addImport("executor", executor_module);
     stateless_exe.root_module.addImport("main_allocator", main_allocator_module);
     stateless_exe.root_module.addImport("zkvm_io", zkvm_io_module);
-    addCryptoLibraries(stateless_exe, crypto_include, libblst_path, libmcl_path, is_linux);
+    addCryptoLibraries(stateless_exe, crypto_include, libblst_path, libmcl_path, is_linux, enable_secp256k1, enable_openssl, enable_blst, enable_mcl);
     b.installArtifact(stateless_exe);
     addRunStep(b, "run", "Run the zevm_stateless app", stateless_exe, &.{});
 
@@ -419,7 +434,7 @@ pub fn build(b: *std.Build) void {
     });
     t8n_exe.root_module.addImport("executor", executor_module);
     t8n_exe.root_module.addImport("hardfork", hardfork_module);
-    addCryptoLibraries(t8n_exe, crypto_include, libblst_path, libmcl_path, is_linux);
+    addCryptoLibraries(t8n_exe, crypto_include, libblst_path, libmcl_path, is_linux, enable_secp256k1, enable_openssl, enable_blst, enable_mcl);
     b.installArtifact(t8n_exe);
     addRunStep(b, "t8n", "Run the t8n state transition tool", t8n_exe, &.{});
 
@@ -436,7 +451,7 @@ pub fn build(b: *std.Build) void {
     spec_test_exe.root_module.addImport("t8n_input", t8n_input_module);
     spec_test_exe.root_module.addImport("executor", executor_module);
     spec_test_exe.root_module.addImport("hardfork", hardfork_module);
-    addCryptoLibraries(spec_test_exe, crypto_include, libblst_path, libmcl_path, is_linux);
+    addAllCryptoLibraries(spec_test_exe, crypto_include, libblst_path, libmcl_path, is_linux);
     b.installArtifact(spec_test_exe);
     addRunStep(b, "state-tests", "Run execution-spec-tests state fixtures", spec_test_exe, &.{});
 
@@ -463,7 +478,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     bc_test_exe.root_module.addImport("runner", blockchain_runner_module);
-    addCryptoLibraries(bc_test_exe, crypto_include, libblst_path, libmcl_path, is_linux);
+    addAllCryptoLibraries(bc_test_exe, crypto_include, libblst_path, libmcl_path, is_linux);
     b.installArtifact(bc_test_exe);
     addRunStep(b, "blockchain-tests", "Run Ethereum blockchain test fixtures", bc_test_exe, &.{});
 
@@ -480,7 +495,7 @@ pub fn build(b: *std.Build) void {
     zkevm_test_exe.root_module.addImport("ssz_decode", ssz_decode_module);
     zkevm_test_exe.root_module.addImport("ssz_output", ssz_output_module);
     zkevm_test_exe.root_module.addImport("executor", executor_module);
-    addCryptoLibraries(zkevm_test_exe, crypto_include, libblst_path, libmcl_path, is_linux);
+    addAllCryptoLibraries(zkevm_test_exe, crypto_include, libblst_path, libmcl_path, is_linux);
     b.installArtifact(zkevm_test_exe);
     addRunStep(b, "zkevm-tests", "Run zkevm blockchain test fixtures", zkevm_test_exe,
         &.{ "--fixtures", "spec-tests/fixtures/zkevm/blockchain_tests" });
@@ -503,7 +518,7 @@ pub fn build(b: *std.Build) void {
     hive_exe.root_module.addImport("hardfork", hardfork_module);
     hive_exe.root_module.addImport("mpt", mpt_module);
     hive_exe.root_module.addImport("mpt_builder", mpt_builder_module);
-    addCryptoLibraries(hive_exe, crypto_include, libblst_path, libmcl_path, is_linux);
+    addAllCryptoLibraries(hive_exe, crypto_include, libblst_path, libmcl_path, is_linux);
     b.installArtifact(hive_exe);
     b.step("hive-rlp", "Build and install the Hive consume-rlp client").dependOn(b.getInstallStep());
 
@@ -519,7 +534,7 @@ pub fn build(b: *std.Build) void {
     }) |t| {
         const tst = b.addTest(.{ .root_module = t.m });
         _ = t.name;
-        addCryptoLibraries(tst, crypto_include, libblst_path, libmcl_path, is_linux);
+        addAllCryptoLibraries(tst, crypto_include, libblst_path, libmcl_path, is_linux);
         test_step.dependOn(&b.addRunArtifact(tst).step);
     }
 
@@ -534,7 +549,7 @@ pub fn build(b: *std.Build) void {
         m.addImport("mpt", mpt_module);
         m.addImport("input", input_module);
         const tst = b.addTest(.{ .root_module = m });
-        addCryptoLibraries(tst, crypto_include, libblst_path, libmcl_path, is_linux);
+        addAllCryptoLibraries(tst, crypto_include, libblst_path, libmcl_path, is_linux);
         test_step.dependOn(&b.addRunArtifact(tst).step);
     }
 
@@ -552,7 +567,7 @@ pub fn build(b: *std.Build) void {
         m.addImport("input", input_module);
         m.addImport("db", db_module);
         const tst = b.addTest(.{ .root_module = m });
-        addCryptoLibraries(tst, crypto_include, libblst_path, libmcl_path, is_linux);
+        addAllCryptoLibraries(tst, crypto_include, libblst_path, libmcl_path, is_linux);
         test_step.dependOn(&b.addRunArtifact(tst).step);
     }
 
