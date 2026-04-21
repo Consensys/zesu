@@ -6,7 +6,20 @@
 const std = @import("std");
 const Chain = @import("chain.zig").Chain;
 
-const ListWriter = @import("../common.zig").ListWriter;
+const ListWriter = struct {
+    list: *std.ArrayListUnmanaged(u8),
+    alloc: std.mem.Allocator,
+    pub const Error = std.mem.Allocator.Error;
+    pub fn writeAll(self: @This(), bytes: []const u8) Error!void {
+        return self.list.appendSlice(self.alloc, bytes);
+    }
+    pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) Error!void {
+        return self.list.print(self.alloc, fmt, args);
+    }
+    pub fn writeByte(self: @This(), byte: u8) Error!void {
+        return self.list.append(self.alloc, byte);
+    }
+};
 
 pub fn serve(io: std.Io, chain: *Chain) !void {
     const addr = try std.Io.net.IpAddress.parseIp4("0.0.0.0", 8545);
@@ -27,7 +40,10 @@ fn handleConn(io: std.Io, chain: *Chain, stream: std.Io.net.Stream) !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    // 8 KB buffer ensures the full HTTP request lands in one netRead syscall.
+    // Use a large reader buffer so the first netRead captures the full HTTP
+    // request in one syscall. peekDelimiterInclusive reads one line at a time
+    // without looping on netRead — it only calls fillMore (one netRead) when
+    // the internal buffer is empty, then scans what arrived.
     var rbuf: [8192]u8 = undefined;
     var reader = stream.reader(io, &rbuf);
 
@@ -52,17 +68,16 @@ fn handleConn(io: std.Io, chain: *Chain, stream: std.Io.net.Stream) !void {
 
     const response_body = processRpc(chain, alloc, body);
 
-    // Write headers and body separately to avoid a fixed-size intermediate buffer.
-    var headers_buf: [128]u8 = undefined;
-    const headers = std.fmt.bufPrint(
-        &headers_buf,
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        .{response_body.len},
+    // Write HTTP 200 response
+    var resp_buf: [4096]u8 = undefined;
+    const resp = std.fmt.bufPrint(
+        &resp_buf,
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{s}",
+        .{ response_body.len, response_body },
     ) catch return;
     var wbuf: [512]u8 = undefined;
     var writer = stream.writer(io, &wbuf);
-    writer.interface.writeAll(headers) catch {};
-    writer.interface.writeAll(response_body) catch {};
+    writer.interface.writeAll(resp) catch {};
     writer.interface.flush() catch {};
 }
 
