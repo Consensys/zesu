@@ -44,8 +44,8 @@ RUN git clone --depth=1 https://github.com/herumi/mcl.git /tmp/mcl && \
 
 WORKDIR /src
 COPY build.zig* ./
-COPY src ./
-COPY tools ./
+COPY src ./src
+COPY tools ./tools
 
 # Build the hive-rlp binary (ReleaseFast for container use)
 RUN zig build hive-rlp -Doptimize=ReleaseFast

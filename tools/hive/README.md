@@ -1,6 +1,6 @@
-# zevm-stateless Hive Client
+# zesu Hive Client
 
-This directory contains the Hive client implementation for `zevm-stateless` using the `ethereum/eels/consume-rlp` simulator.
+This directory contains the Hive client implementation for `zesu` using the `ethereum/eels/consume-rlp` simulator.
 
 The client (`hive-rlp`) reads a genesis JSON and a sequence of RLP-encoded blocks injected by Hive, executes them, and serves `eth_getBlockByNumber` on `:8545`.
 
@@ -8,38 +8,15 @@ The client (`hive-rlp`) reads a genesis JSON and a sequence of RLP-encoded block
 
 - [Hive](https://github.com/ethereum/hive) checked out somewhere on your machine
 - Docker
-- The `zevm` repo as a sibling directory to `zevm-stateless` (i.e. `../../../zevm` relative to this file)
 
 ## 1. Build the Docker image
 
-The Dockerfile expects a build context with two top-level directories:
-- `zevm-stateless/` — this repo
-- `zevm/` — the zevm dependency
+BuildKit (the default builder on Docker Desktop for Mac) has issues with this build — it filters the build context incorrectly and the Zig build runner panics inside the container. Disable BuildKit with `DOCKER_BUILDKIT=0` to use the classic builder.
 
-Because both source trees are large (cache dirs, spec-tests, etc.), use `rsync` to create a lean build context first. Run from the parent directory that contains both repos:
+Run from the `zesu` repo root:
 
 ```bash
-# Create a lean build context (excludes caches and large test fixtures)
-mkdir -p /tmp/zevm-hive-build
-
-rsync -a --delete \
-  --exclude='spec-tests/' \
-  --exclude='zig-out/' \
-  --exclude='.zig-cache/' \
-  --exclude='test/' \
-  ./zevm-stateless/ \
-  /tmp/zevm-hive-build/zevm-stateless/
-
-rsync -a --delete \
-  --exclude='zig-out/' \
-  --exclude='.zig-cache/' \
-  ./zevm/ \
-  /tmp/zevm-hive-build/zevm/
-
-# Build the image (uses cached layers for Zig/blst/mcl)
-cd /tmp/zevm-hive-build
-docker build -t zevm-stateless:latest \
-  -f zevm-stateless/src/hive/Dockerfile .
+DOCKER_BUILDKIT=0 docker build -t zesu:latest -f ./tools/hive/Dockerfile .
 ```
 
 The first build takes ~5 minutes (downloads and compiles Zig, blst, mcl). Subsequent builds with only source changes are ~30s due to Docker layer caching.
@@ -51,7 +28,7 @@ From the Hive repo root:
 ```bash
 ./hive \
   --sim ethereum/eels/consume-rlp \
-  --client-file=./zevm-stateless.yaml \
+  --client-file=./zesu.yaml \
   --client.checktimelimit=300s \
   --docker.buildoutput \
   --sim.parallelism=6 \
@@ -65,7 +42,7 @@ To run a subset of tests (e.g. specific EIPs), add `--sim.limit` with a regex:
 ```bash
 ./hive \
   --sim ethereum/eels/consume-rlp \
-  --client-file=./zevm-stateless.yaml \
+  --client-file=./zesu.yaml \
   --client.checktimelimit=300s \
   --docker.buildoutput \
   --sim.parallelism=6 \
@@ -75,12 +52,12 @@ To run a subset of tests (e.g. specific EIPs), add `--sim.limit` with a regex:
   --sim.loglevel=3
 ```
 
-The `zevm-stateless.yaml` client file lives in the Hive repo root and wraps the pre-built image:
+The `zesu.yaml` client file lives in the Hive repo root and wraps the pre-built image:
 
 ```yaml
 clients:
-  - name: zevm-stateless
-    baseimage: zevm-stateless
+  - name: zesu
+    baseimage: zesu
     tag: latest
 ```
 
@@ -89,13 +66,13 @@ clients:
 After editing source files, re-sync and rebuild:
 
 ```bash
-# Run from the parent directory containing both repos
+# From the zesu repo root:
 rsync -a --delete \
-  --exclude='spec-tests/' --exclude='zig-out/' --exclude='.zig-cache/' --exclude='test/' \
-  ./zevm-stateless/ /tmp/zevm-hive-build/zevm-stateless/
+  --exclude='spec-tests/' --exclude='zig-out/' --exclude='.zig-cache/' \
+  . /tmp/zesu-hive-build/
 
-cd /tmp/zevm-hive-build
-docker build -t zevm-stateless:latest -f zevm-stateless/src/hive/Dockerfile .
+cd /tmp/zesu-hive-build
+docker build -t zesu:latest -f tools/hive/Dockerfile .
 ```
 
 Then re-run the Hive command.
@@ -106,7 +83,7 @@ Then re-run the Hive command.
 |------|---------|
 | `main.zig` | Entry point: loads genesis, imports blocks, starts RPC server |
 | `genesis.zig` | Parses `/genesis.json` (geth format), computes state root and block hash |
-| `chain.zig` | In-memory chain: decodes RLP blocks, executes via zevm, verifies roots |
+| `chain.zig` | In-memory chain: decodes RLP blocks, executes via zesu, verifies roots |
 | `fork_env.zig` | Reads `HIVE_*` env vars to build the fork schedule |
 | `rpc.zig` | Minimal HTTP/JSON-RPC server on `:8545` (`eth_blockNumber`, `eth_getBlockByNumber`) |
 | `Dockerfile` | Multi-stage build: Zig 0.15.1 + blst + mcl (shared lib) |
@@ -115,4 +92,4 @@ Then re-run the Hive command.
 
 - **mcl is linked as a shared library** (`libmcl.so`). Static linking fails because Zig's LLD cannot resolve C++ symbols from libstdc++/libc++. The runtime image includes `libc++1` and copies `libmcl.so*`.
 - **`std.fmt.fmtSliceHexLower` does not exist in Zig 0.15.1**. The `bytesToHex` helper in `rpc.zig` is used instead.
-- The `zevm-stateless.yaml` in Hive uses `baseimage: zevm-stateless, tag: latest` — it does not build from source itself, it wraps the pre-built image.
+- The `zesu.yaml` in Hive uses `baseimage: zesu, tag: latest` — it does not build from source itself, it wraps the pre-built image.
