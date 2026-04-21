@@ -19,7 +19,6 @@ var mcl_init_done: bool = false;
 
 /// Initialize mcl library (call once before using)
 fn initMcl() void {
-    if (mcl_init_done) return;
     while (!mcl_init_mutex.tryLock()) {}
     defer mcl_init_mutex.unlock();
     if (mcl_init_done) return;
