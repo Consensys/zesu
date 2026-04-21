@@ -18,6 +18,7 @@ const std = @import("std");
 /// Read all private input bytes (stdin in native builds).
 pub fn read_input(allocator: std.mem.Allocator) ![]const u8 {
     var list = std.ArrayListUnmanaged(u8).empty;
+    errdefer list.deinit(allocator);
     var chunk: [4096]u8 = undefined;
     while (true) {
         const n = try std.posix.read(std.posix.STDIN_FILENO, &chunk);

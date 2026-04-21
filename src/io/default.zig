@@ -55,6 +55,7 @@ pub fn read_input(buf_ptr: *[*]const u8, buf_size: *usize) void {
 
 fn readFd(allocator: std.mem.Allocator, fd: std.posix.fd_t) ![]u8 {
     var list = std.ArrayListUnmanaged(u8).empty;
+    errdefer list.deinit(allocator);
     var chunk: [4096]u8 = undefined;
     while (true) {
         const n = try std.posix.read(fd, &chunk);
