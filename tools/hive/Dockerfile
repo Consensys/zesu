@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config gcc g++ clang libc++-dev libc++abi-dev libgmp-dev libc-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Zig 0.15.2
-ARG ZIG_VERSION=0.15.2
+# Install Zig 0.16.0
+ARG ZIG_VERSION=0.16.0
 ARG TARGETARCH
 RUN case "${TARGETARCH:-amd64}" in \
         amd64) ZIG_ARCH=x86_64 ;; \
