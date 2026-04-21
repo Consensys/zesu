@@ -14,17 +14,14 @@ const c = @cImport({
     @cInclude("mcl/bn.h");
 });
 
-var mcl_init_mutex: std.atomic.Mutex = .unlocked;
-var mcl_init_done: bool = false;
+var mcl_init_done: std.atomic.Value(bool) = .init(false);
 
 /// Initialize mcl library (call once before using)
 fn initMcl() void {
-    while (!mcl_init_mutex.tryLock()) {}
-    defer mcl_init_mutex.unlock();
-    if (mcl_init_done) return;
+    if (mcl_init_done.load(.acquire)) return;
     // MCL_BN_SNARK1=4; MCLBN_COMPILED_TIME_VAR=46 for bn_c384_256 (FP=384, FR=256).
     _ = c.mclBn_init(4, 46);
-    mcl_init_done = true;
+    mcl_init_done.store(true, .release);
 }
 
 // ---------------------------------------------------------------------------

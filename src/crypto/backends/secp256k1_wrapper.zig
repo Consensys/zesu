@@ -102,13 +102,14 @@ pub const Secp256k1 = struct {
     }
 };
 
-var global_ctx_mutex: std.atomic.Mutex = .unlocked;
+var global_ctx_done: std.atomic.Value(bool) = .init(false);
 var global_ctx: ?Secp256k1 = null;
 
 pub fn getContext() ?Secp256k1 {
-    while (!global_ctx_mutex.tryLock()) {}
-    defer global_ctx_mutex.unlock();
-    if (global_ctx == null) global_ctx = Secp256k1.init();
+    if (!global_ctx_done.load(.acquire)) {
+        global_ctx = Secp256k1.init();
+        global_ctx_done.store(true, .release);
+    }
     return global_ctx;
 }
 
