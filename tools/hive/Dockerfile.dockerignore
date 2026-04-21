@@ -1,0 +1,15 @@
+# Build context is the parent Development/ directory.
+# Exclude everything except the two needed directories.
+*
+!zevm/
+!zevm-stateless/
+
+# Exclude large/unneeded subdirs within each
+zevm/.git/
+zevm/.zig-cache/
+zevm/zig-out/
+
+zevm-stateless/.git/
+zevm-stateless/test/fixtures/
+zevm-stateless/.zig-cache/
+zevm-stateless/zig-out/

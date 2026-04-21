@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        zig-version: ['0.15.1']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ matrix.zig-version }}
+
+      - name: Verify Zig installation
+        run: zig version
+
+      - name: Check formatting
+        run: zig fmt --check src/ tools/
+
+      - name: Install dependencies
+        run: make install-deps
+
+      - name: Verify blst headers (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if [ -f /tmp/blst/bindings/blst.h ]; then
+            echo "blst.h found at /tmp/blst/bindings/blst.h"
+          elif [ -f /opt/homebrew/include/blst/blst.h ]; then
+            echo "blst.h found at /opt/homebrew/include/blst/blst.h"
+          elif [ -f /usr/local/include/blst/blst.h ]; then
+            echo "blst.h found at /usr/local/include/blst/blst.h"
+          else
+            find /tmp/blst -name "blst.h" 2>/dev/null || echo "No blst.h in /tmp/blst"
+            exit 1
+          fi
+
+      - name: Build
+        run: zig build install
+
+      - name: Run unit tests
+        env:
+          DYLD_LIBRARY_PATH: /opt/homebrew/lib:/usr/local/lib
+        run: zig build test
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.15.1'
+
+      - name: Format check
+        run: zig fmt --check src/ tools/

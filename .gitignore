@@ -1,0 +1,23 @@
+# Zig build artifacts
+zig-out/
+zig-cache/
+.zig-cache/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# zisk build tree
+/zisk/
+
+# execution-spec-tests downloaded fixtures (use `zig build fetch-fixtures`)
+test/fixtures/
+
+# OS
+.DS_Store
+Thumbs.db
+spec-tests/

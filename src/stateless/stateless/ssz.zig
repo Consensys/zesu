@@ -1,0 +1,277 @@
+//! Manual SSZ decoder for SszStatelessInput (Amsterdam stateless block execution).
+//!
+//! Implements the schema from stateless_ssz.py without any external SSZ library.
+//! All container offsets are relative to the start of each container's byte slice.
+//!
+//! Container layouts (fixed region sizes):
+//!   SszStatelessInput:    20 bytes  [4+4+8+4]
+//!   SszNewPayloadRequest: 44 bytes  [4+4+32+4]
+//!   SszExecutionPayload: 540 bytes  (see EP_FIXED_SIZE)
+//!   SszExecutionWitness:  12 bytes  [4+4+4]
+//!   SszWithdrawal:        68 bytes  fixed (8+8+20+32)
+
+const std = @import("std");
+const input_mod = @import("input");
+const rlp_decode = @import("rlp_decode");
+
+// ── Primitive reads (little-endian) ──────────────────────────────────────────
+
+inline fn readU32(data: []const u8, off: usize) u32 {
+    return std.mem.readInt(u32, data[off..][0..4], .little);
+}
+
+inline fn readU64(data: []const u8, off: usize) u64 {
+    return std.mem.readInt(u64, data[off..][0..8], .little);
+}
+
+// ── List[ByteList] decoder ────────────────────────────────────────────────────
+
+/// Decode SSZ `List[ByteList[...], N]` from raw bytes.
+/// The encoding is: N×4-byte LE offsets followed by concatenated element data.
+/// Element i spans [off[i], off[i+1]) with off[N] = data.len.
+/// Returns zero-copy slices pointing into `data`.
+fn decodeByteListList(alloc: std.mem.Allocator, data: []const u8) ![]const []const u8 {
+    if (data.len == 0) return &.{};
+    if (data.len < 4) return error.InvalidSsz;
+
+    const first_off = readU32(data, 0);
+    // first_off == 4*N (size of the offset table itself)
+    if (first_off == 0 or first_off % 4 != 0) return error.InvalidSsz;
+    if (first_off > data.len) return error.InvalidSsz;
+    const n = first_off / 4;
+
+    const result = try alloc.alloc([]const u8, n);
+
+    for (0..n) |i| {
+        const off_i = readU32(data, i * 4);
+        const end_i: u32 = if (i + 1 < n) readU32(data, (i + 1) * 4) else blk: {
+            if (data.len > std.math.maxInt(u32)) return error.InvalidSsz;
+            break :blk @intCast(data.len);
+        };
+        if (off_i > data.len or end_i > data.len or off_i > end_i) return error.InvalidSsz;
+        result[i] = data[off_i..end_i];
+    }
+
+    return result;
+}
+
+// ── SszWithdrawal decoder ─────────────────────────────────────────────────────
+
+/// SszWithdrawal fixed size: index(8) + validator_index(8) + address(20) + amount(uint256=32) = 68
+const WITHDRAWAL_SIZE: usize = 68;
+
+fn decodeWithdrawal(bytes: *const [WITHDRAWAL_SIZE]u8) input_mod.Withdrawal {
+    const index = std.mem.readInt(u64, bytes[0..8], .little);
+    const validator_index = std.mem.readInt(u64, bytes[8..16], .little);
+    var address: [20]u8 = undefined;
+    @memcpy(&address, bytes[16..36]);
+    // amount is uint256 LE; truncate low 8 bytes to u64 (gwei fits in u64)
+    const amount = std.mem.readInt(u64, bytes[36..44], .little);
+    return .{
+        .index = index,
+        .validator_index = validator_index,
+        .address = address,
+        .amount = amount,
+    };
+}
+
+// ── Top-level decoder ─────────────────────────────────────────────────────────
+
+/// SszExecutionPayload fixed region byte offsets:
+///   [0..32]    parent_hash
+///   [32..52]   fee_recipient
+///   [52..84]   state_root
+///   [84..116]  receipts_root
+///   [116..372] logs_bloom
+///   [372..404] prev_randao
+///   [404..412] block_number
+///   [412..420] gas_limit
+///   [420..428] gas_used
+///   [428..436] timestamp
+///   [436..440] → extra_data (variable offset)
+///   [440..472] base_fee_per_gas (uint256 LE)
+///   [472..504] block_hash (ignored)
+///   [504..508] → transactions (variable offset)
+///   [508..512] → withdrawals (variable offset)
+///   [512..520] blob_gas_used
+///   [520..528] excess_blob_gas
+///   [528..532] → block_access_list (variable offset, ignored)
+///   [532..540] slot_number
+const EP_FIXED_SIZE: usize = 540;
+
+/// Decode an SSZ-serialized SszStatelessInput into a StatelessInput.
+pub fn decode(alloc: std.mem.Allocator, data: []const u8) !input_mod.StatelessInput {
+    // ── SszStatelessInput fixed region (20 bytes) ─────────────────────────────
+    // [0..4]   offset → new_payload_request (variable)
+    // [4..8]   offset → witness (variable)
+    // [8..16]  chain_config.chain_id (uint64, fixed inline)
+    // [16..20] offset → public_keys (variable)
+    if (data.len < 20) return error.InvalidSsz;
+    const off_npr: usize = readU32(data, 0);
+    const off_witness: usize = readU32(data, 4);
+    const chain_id: u64 = readU64(data, 8);
+    const off_pubkeys: usize = readU32(data, 16);
+
+    if (off_npr < 20 or off_witness > data.len or off_pubkeys > data.len) return error.InvalidSsz;
+    if (off_npr >= off_witness or off_witness > off_pubkeys) return error.InvalidSsz;
+
+    const npr_data = data[off_npr..off_witness];
+    const witness_data = data[off_witness..off_pubkeys];
+    const pubkeys_data = data[off_pubkeys..];
+
+    // ── SszNewPayloadRequest fixed region (44 bytes) ──────────────────────────
+    // [0..4]   offset → execution_payload (variable)
+    // [4..8]   offset → versioned_hashes (variable)
+    // [8..40]  parent_beacon_block_root: Bytes32 (fixed inline)
+    // [40..44] offset → execution_requests (variable)
+    if (npr_data.len < 44) return error.InvalidSsz;
+    const off_ep: usize = readU32(npr_data, 0);
+    const off_vh: usize = readU32(npr_data, 4);
+    const off_er: usize = readU32(npr_data, 40);
+
+    var parent_beacon_root: [32]u8 = undefined;
+    @memcpy(&parent_beacon_root, npr_data[8..40]);
+
+    if (off_ep < 44 or off_vh > npr_data.len or off_er > npr_data.len) return error.InvalidSsz;
+    if (off_ep >= off_vh or off_vh > off_er) return error.InvalidSsz;
+
+    const ep_data = npr_data[off_ep..off_vh];
+
+    // versioned_hashes: List[Bytes32, 4096] — packed 32-byte elements (no offset table)
+    const vh_bytes = npr_data[off_vh..off_er];
+    if (vh_bytes.len % 32 != 0) return error.InvalidSsz;
+    const vh_count = vh_bytes.len / 32;
+    const versioned_hashes = try alloc.alloc([32]u8, vh_count);
+    for (0..vh_count) |i| @memcpy(&versioned_hashes[i], vh_bytes[i * 32 ..][0..32]);
+
+    // execution_requests: List[ByteList[2^20], 16]
+    const execution_requests = try decodeByteListList(alloc, npr_data[off_er..]);
+
+    // ── SszExecutionPayload fixed region (540 bytes) ──────────────────────────
+    if (ep_data.len < EP_FIXED_SIZE) return error.InvalidSsz;
+
+    var parent_hash: [32]u8 = undefined;
+    @memcpy(&parent_hash, ep_data[0..32]);
+
+    var fee_recipient: [20]u8 = undefined;
+    @memcpy(&fee_recipient, ep_data[32..52]);
+
+    var state_root: [32]u8 = undefined;
+    @memcpy(&state_root, ep_data[52..84]);
+
+    var receipts_root: [32]u8 = undefined;
+    @memcpy(&receipts_root, ep_data[84..116]);
+
+    var logs_bloom: [256]u8 = undefined;
+    @memcpy(&logs_bloom, ep_data[116..372]);
+
+    var prev_randao: [32]u8 = undefined;
+    @memcpy(&prev_randao, ep_data[372..404]);
+
+    const block_number: u64 = readU64(ep_data, 404);
+    const gas_limit: u64 = readU64(ep_data, 412);
+    const gas_used: u64 = readU64(ep_data, 420);
+    const timestamp: u64 = readU64(ep_data, 428);
+
+    const off_extra_data: usize = readU32(ep_data, 436);
+    // base_fee_per_gas: uint256 LE — low 8 bytes give the u64 value
+    const base_fee_per_gas: u64 = readU64(ep_data, 440);
+    var block_hash: [32]u8 = undefined;
+    @memcpy(&block_hash, ep_data[472..504]);
+    // block_hash at [472..504] — not used for execution but needed for SSZ hash_tree_root
+    const off_transactions: usize = readU32(ep_data, 504);
+    const off_withdrawals: usize = readU32(ep_data, 508);
+    const blob_gas_used: u64 = readU64(ep_data, 512);
+    const excess_blob_gas: u64 = readU64(ep_data, 520);
+    const off_block_access_list: usize = readU32(ep_data, 528);
+    const slot_number: u64 = readU64(ep_data, 532);
+
+    // Validate variable-field offsets (must be ascending and in range)
+    if (off_extra_data < EP_FIXED_SIZE or off_block_access_list > ep_data.len) return error.InvalidSsz;
+    if (off_extra_data > off_transactions or off_transactions > off_withdrawals or
+        off_withdrawals > off_block_access_list) return error.InvalidSsz;
+
+    // extra_data: ByteList[32] — raw bytes (not an offset-table list)
+    const extra_data = try alloc.dupe(u8, ep_data[off_extra_data..off_transactions]);
+
+    // transactions: List[ByteList, N] — offset-table format
+    const txs_raw = try decodeByteListList(alloc, ep_data[off_transactions..off_withdrawals]);
+    const transactions = try alloc.alloc(input_mod.Transaction, txs_raw.len);
+    for (txs_raw, 0..) |raw_tx, i| {
+        transactions[i] = try rlp_decode.decodeSingleTx(alloc, raw_tx);
+    }
+
+    // block_access_list: ByteList[2^24] — raw bytes (last variable field in EP)
+    const block_access_list = try alloc.dupe(u8, ep_data[off_block_access_list..]);
+
+    // withdrawals: List[SszWithdrawal, N] — packed fixed-size items (no offset table)
+    const wd_bytes = ep_data[off_withdrawals..off_block_access_list];
+    if (wd_bytes.len % WITHDRAWAL_SIZE != 0) return error.InvalidSsz;
+    const wcount = wd_bytes.len / WITHDRAWAL_SIZE;
+    const withdrawals = try alloc.alloc(input_mod.Withdrawal, wcount);
+    for (0..wcount) |i| {
+        withdrawals[i] = decodeWithdrawal(wd_bytes[i * WITHDRAWAL_SIZE ..][0..WITHDRAWAL_SIZE]);
+    }
+
+    // ── SszExecutionWitness fixed region (12 bytes) ───────────────────────────
+    // [0..4]  offset → state (variable)
+    // [4..8]  offset → codes (variable)
+    // [8..12] offset → headers (variable)
+    if (witness_data.len < 12) return error.InvalidSsz;
+    const off_state: usize = readU32(witness_data, 0);
+    const off_codes: usize = readU32(witness_data, 4);
+    const off_headers: usize = readU32(witness_data, 8);
+
+    if (off_state < 12 or off_headers > witness_data.len) return error.InvalidSsz;
+    if (off_state > off_codes or off_codes > off_headers) return error.InvalidSsz;
+
+    const nodes = try decodeByteListList(alloc, witness_data[off_state..off_codes]);
+    const codes = try decodeByteListList(alloc, witness_data[off_codes..off_headers]);
+    const headers = try decodeByteListList(alloc, witness_data[off_headers..]);
+
+    // ── Public keys: List[ByteList[48], N] ────────────────────────────────────
+    // Pre-recovered secp256k1 public keys, one per transaction in order.
+    // SSZ schema declares ByteList[48] as the element type (legacy bound from the spec),
+    // but Amsterdam keys are 64 bytes (uncompressed, no 0x04 prefix). The decoder returns
+    // whatever bytes are present; transition.zig accepts only 64-byte entries.
+    // Empty list = no pre-recovered keys supplied.
+    const public_keys = try decodeByteListList(alloc, pubkeys_data);
+
+    // ── Assemble StatelessInput ───────────────────────────────────────────────
+    return input_mod.StatelessInput{
+        .new_payload_request = .{
+            .execution_payload = .{
+                .parent_hash = parent_hash,
+                .fee_recipient = fee_recipient,
+                .state_root = state_root, // POST-execution (for output verification)
+                .receipts_root = receipts_root,
+                .logs_bloom = logs_bloom,
+                .prev_randao = prev_randao,
+                .block_number = block_number,
+                .gas_limit = gas_limit,
+                .gas_used = gas_used,
+                .timestamp = timestamp,
+                .extra_data = extra_data,
+                .base_fee_per_gas = base_fee_per_gas,
+                .block_hash = block_hash,
+                .transactions = transactions,
+                .raw_transactions = txs_raw,
+                .withdrawals = withdrawals,
+                .blob_gas_used = blob_gas_used,
+                .excess_blob_gas = excess_blob_gas,
+                .slot_number = slot_number,
+                .block_access_list = block_access_list,
+            },
+            .parent_beacon_block_root = parent_beacon_root,
+            .versioned_hashes = versioned_hashes,
+            .execution_requests = execution_requests,
+        },
+        .witness = .{
+            .nodes = nodes,
+            .codes = codes,
+            .headers = headers,
+        },
+        .chain_config = .{ .chain_id = if (chain_id != 0) chain_id else 1 },
+        .public_keys = public_keys,
+    };
+}

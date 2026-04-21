@@ -1,0 +1,8 @@
+.{
+    .name = .zesu,
+    .fingerprint = 0x4fa739a900a9da52,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.1",
+    .paths = .{"."},
+    .dependencies = .{},
+}
