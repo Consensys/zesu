@@ -9,11 +9,10 @@
 ///   stateless  — Stateless block executor (MPT witness verification, WitnessDatabase)
 ///   crypto     — Accelerator interface + default C-library implementation
 ///   io         — Read/write interface per zkvm-standards io-interface
-
-pub const evm        = @import("evm/main.zig");
-pub const stateless  = @import("stateless/root.zig");
-pub const crypto     = @import("crypto/accelerators.zig");
-pub const io         = @import("io/interface.zig");
+pub const evm = @import("evm/main.zig");
+pub const stateless = @import("stateless/root.zig");
+pub const crypto = @import("crypto/accelerators.zig");
+pub const io = @import("io/interface.zig");
 
 // Re-export the most commonly used EVM types at the top level for convenience.
 pub const primitives = evm.primitives;

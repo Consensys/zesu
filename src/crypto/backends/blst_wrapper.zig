@@ -178,9 +178,9 @@ pub fn g1Add(a: [96]u8, b: [96]u8) ![96]u8 {
 }
 
 /// Named pair types for MSM and pairing operations.
-pub const G1MsmPair   = struct { point: [96]u8,  scalar: [32]u8 };
-pub const G2MsmPair   = struct { point: [192]u8, scalar: [32]u8 };
-pub const PairingPair = struct { g1: [96]u8,     g2: [192]u8    };
+pub const G1MsmPair = struct { point: [96]u8, scalar: [32]u8 };
+pub const G2MsmPair = struct { point: [192]u8, scalar: [32]u8 };
+pub const PairingPair = struct { g1: [96]u8, g2: [192]u8 };
 
 /// BLS12-381 G1 multi-scalar multiplication
 /// Input: array of (point, scalar) pairs

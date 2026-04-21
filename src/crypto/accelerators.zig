@@ -17,7 +17,6 @@
 ///   Outputs are pointer arguments (*T) so callers allocate.
 ///   Functions that can fail return bool (true = success).
 ///   Functions that cannot fail return void.
-
 const impl = @import("accel_impl");
 
 // ── Type aliases (mirrors zkvm_accelerators.h) ────────────────────────────
@@ -25,13 +24,13 @@ const impl = @import("accel_impl");
 // All types are declared as pub so downstream code can reference them from
 // this module rather than hard-coding magic sizes everywhere.
 
-pub const Hash32   = [32]u8;    // keccak256, sha256, ripemd160 (20-byte hash, 12 zero-pad)
-pub const Bytes16  = [16]u8;    // blake2f offset counter pair
-pub const Bytes48  = [48]u8;    // BLS Fp element, KZG commitment / proof
-pub const Bytes64  = [64]u8;    // secp256k1 / secp256r1 pubkey or sig, BN254 G1 point
-pub const Bytes96  = [96]u8;    // BLS G1 point (Fp x, Fp y)
-pub const Bytes128 = [128]u8;   // BN254 G2 point, blake2f message block
-pub const Bytes192 = [192]u8;   // BLS G2 point (Fp2 x, Fp2 y)
+pub const Hash32 = [32]u8; // keccak256, sha256, ripemd160 (20-byte hash, 12 zero-pad)
+pub const Bytes16 = [16]u8; // blake2f offset counter pair
+pub const Bytes48 = [48]u8; // BLS Fp element, KZG commitment / proof
+pub const Bytes64 = [64]u8; // secp256k1 / secp256r1 pubkey or sig, BN254 G1 point
+pub const Bytes96 = [96]u8; // BLS G1 point (Fp x, Fp y)
+pub const Bytes128 = [128]u8; // BN254 G2 point, blake2f message block
+pub const Bytes192 = [192]u8; // BLS G2 point (Fp2 x, Fp2 y)
 
 /// BN254 (alt_bn128) G1 + G2 pair used for pairing check (precompile 0x08).
 pub const Bn254PairingPair = extern struct {
@@ -46,13 +45,13 @@ pub const Bn254PairingPair = extern struct {
 
 /// BLS12-381 G1 point + scalar pair used for G1 MSM (precompile 0x0c).
 pub const Bls12G1MsmPair = extern struct {
-    point:  Bytes96,
+    point: Bytes96,
     scalar: Hash32,
 };
 
 /// BLS12-381 G2 point + scalar pair used for G2 MSM (precompile 0x0e).
 pub const Bls12G2MsmPair = extern struct {
-    point:  Bytes192,
+    point: Bytes192,
     scalar: Hash32,
 };
 
@@ -73,9 +72,9 @@ pub inline fn keccak256(data: []const u8, output: *Hash32) void {
 /// Verify an ECDSA signature on secp256k1.
 /// `verified` is set to true iff the signature is valid.
 pub inline fn secp256k1_verify(
-    msg:      *const Hash32,
-    sig:      *const Bytes64,
-    pubkey:   *const Bytes64,
+    msg: *const Hash32,
+    sig: *const Bytes64,
+    pubkey: *const Bytes64,
     verified: *bool,
 ) void {
     impl.secp256k1_verify(msg, sig, pubkey, verified);
@@ -93,9 +92,9 @@ pub inline fn secp256k1_verify(
 /// The caller must keccak256 the last 64 bytes of the pubkey to obtain the
 /// Ethereum address (the EVM precompile wraps this step).
 pub inline fn ecrecover(
-    msg:    *const Hash32,
-    sig:    *const Bytes64,
-    recid:  u8,
+    msg: *const Hash32,
+    sig: *const Bytes64,
+    recid: u8,
     output: *Bytes64,
 ) bool {
     return impl.ecrecover(msg, sig, recid, output);
@@ -116,10 +115,10 @@ pub inline fn ripemd160(data: []const u8, output: *Hash32) void {
 /// `output` must be exactly `modulus.len` bytes.
 /// Returns false on invalid input (e.g. zero-length modulus).
 pub inline fn modexp(
-    base:    []const u8,
-    exp:     []const u8,
+    base: []const u8,
+    exp: []const u8,
     modulus: []const u8,
-    output:  []u8,
+    output: []u8,
 ) bool {
     return impl.modexp(base, exp, modulus, output);
 }
@@ -144,10 +143,10 @@ pub inline fn bn254_pairing(pairs: []const Bn254PairingPair, verified: *bool) bo
 /// `h` is updated in place.  `rounds` is big-endian per the EIP.
 pub inline fn blake2f(
     rounds: u32,
-    h:      *Bytes64,
-    m:      *const Bytes128,
-    t:      *const Bytes16,
-    f:      u8,
+    h: *Bytes64,
+    m: *const Bytes128,
+    t: *const Bytes16,
+    f: u8,
 ) bool {
     return impl.blake2f(rounds, h, m, t, f);
 }
@@ -156,10 +155,10 @@ pub inline fn blake2f(
 /// `verified` is set to true iff the proof is valid.
 pub inline fn kzg_point_eval(
     commitment: *const Bytes48,
-    z:          *const Hash32,
-    y:          *const Hash32,
-    proof:      *const Bytes48,
-    verified:   *bool,
+    z: *const Hash32,
+    y: *const Hash32,
+    proof: *const Bytes48,
+    verified: *bool,
 ) bool {
     return impl.kzg_point_eval(commitment, z, y, proof, verified);
 }
@@ -202,9 +201,9 @@ pub inline fn bls12_map_fp2_to_g2(field_element: *const Bytes96, result: *Bytes1
 /// secp256r1 (P-256) signature verification (precompile 0x100, EIP-7212).
 /// `verified` is set to true iff the signature is valid.
 pub inline fn secp256r1_verify(
-    msg:      *const Hash32,
-    sig:      *const Bytes64,
-    pubkey:   *const Bytes64,
+    msg: *const Hash32,
+    sig: *const Bytes64,
+    pubkey: *const Bytes64,
     verified: *bool,
 ) void {
     impl.secp256r1_verify(msg, sig, pubkey, verified);

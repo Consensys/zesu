@@ -1,0 +1,4 @@
+spec-tests/
+zig-out/
+.zig-cache/
+.git/

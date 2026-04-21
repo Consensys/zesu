@@ -4,7 +4,6 @@
 /// Computes base^exp % modulus for arbitrary-precision integers.
 /// Implements the raw crypto primitive; gas/ABI handling lives in the
 /// precompile dispatch layer (src/evm/precompile/).
-
 const std = @import("std");
 const alloc_mod = @import("zevm_allocator");
 
@@ -12,17 +11,17 @@ const alloc_mod = @import("zevm_allocator");
 /// `output` must be pre-zeroed and exactly `modulus.len` bytes.
 /// Returns false only if a catastrophic allocation failure occurs.
 pub fn modexp(
-    base:    []const u8,
-    exp:     []const u8,
+    base: []const u8,
+    exp: []const u8,
     modulus: []const u8,
-    output:  []u8,
+    output: []u8,
 ) bool {
     std.debug.assert(output.len == modulus.len);
     @memset(output, 0);
 
     const base_trimmed = trimLeadingZeros(base);
-    const exp_trimmed  = trimLeadingZeros(exp);
-    const mod_trimmed  = trimLeadingZeros(modulus);
+    const exp_trimmed = trimLeadingZeros(exp);
+    const mod_trimmed = trimLeadingZeros(modulus);
 
     if (mod_trimmed.len == 0) return true; // output already zero
 
@@ -65,21 +64,28 @@ pub fn modexp(
 }
 
 fn modexpBigInt(
-    allocator:  std.mem.Allocator,
+    allocator: std.mem.Allocator,
     base_bytes: []const u8,
-    exp_bytes:  []const u8,
-    mod_bytes:  []const u8,
-    output:     []u8,
+    exp_bytes: []const u8,
+    mod_bytes: []const u8,
+    output: []u8,
 ) !void {
     const BigInt = std.math.big.int.Managed;
 
-    var base     = try BigInt.init(allocator); defer base.deinit();
-    var exp_val  = try BigInt.init(allocator); defer exp_val.deinit();
-    var modulus  = try BigInt.init(allocator); defer modulus.deinit();
-    var result   = try BigInt.init(allocator); defer result.deinit();
-    var base_pow = try BigInt.init(allocator); defer base_pow.deinit();
-    var tmp      = try BigInt.init(allocator); defer tmp.deinit();
-    var quot     = try BigInt.init(allocator); defer quot.deinit();
+    var base = try BigInt.init(allocator);
+    defer base.deinit();
+    var exp_val = try BigInt.init(allocator);
+    defer exp_val.deinit();
+    var modulus = try BigInt.init(allocator);
+    defer modulus.deinit();
+    var result = try BigInt.init(allocator);
+    defer result.deinit();
+    var base_pow = try BigInt.init(allocator);
+    defer base_pow.deinit();
+    var tmp = try BigInt.init(allocator);
+    defer tmp.deinit();
+    var quot = try BigInt.init(allocator);
+    defer quot.deinit();
 
     try setManagedFromBeBytes(&base, base_bytes);
     try setManagedFromBeBytes(&exp_val, exp_bytes);
@@ -108,7 +114,10 @@ fn setManagedFromBeBytes(m: *std.math.big.int.Managed, bytes: []const u8) !void 
     while (start < bytes.len and bytes[start] == 0) start += 1;
     const trimmed = bytes[start..];
 
-    if (trimmed.len == 0) { try m.set(0); return; }
+    if (trimmed.len == 0) {
+        try m.set(0);
+        return;
+    }
 
     const limb_bytes = @sizeOf(std.math.big.Limb);
     const n_limbs = (trimmed.len + limb_bytes - 1) / limb_bytes;

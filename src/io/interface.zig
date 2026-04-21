@@ -12,7 +12,6 @@
 /// writes to stdout).  Override at build time for zkVM targets:
 ///   exe.root_module.addImport("zkvm_io", your_io_module)
 /// The replacement module must export the same two functions.
-
 const io_impl = @import("io_impl");
 
 /// Read private input.

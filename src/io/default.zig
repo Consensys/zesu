@@ -8,7 +8,6 @@
 ///
 /// For zkVM targets, replace this module with an implementation that reads
 /// from the zkVM's memory-mapped input region and writes to its output region.
-
 const std = @import("std");
 
 // Cached input buffer — allocated once on first read_input call.

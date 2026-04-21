@@ -14,18 +14,17 @@
 /// Module dependencies (wired by build.zig):
 ///   build_options    — enable_secp256k1, enable_mcl, enable_blst, enable_openssl
 ///   zevm_allocator   — allocator for blst MSM scratch and modexp big-int path
-
 const std = @import("std");
 const opts = @import("build_options");
 
 // Backend modules — all owned exclusively by this (accel_impl) module.
 const secp256k1_wrapper = @import("backends/secp256k1_wrapper.zig");
-const mcl_wrapper       = @import("backends/mcl_wrapper.zig");
-const blst_wrapper      = @import("backends/blst_wrapper.zig");
-const openssl_wrapper   = @import("backends/openssl_wrapper.zig");
-const blake2f_impl      = @import("backends/blake2f_impl.zig");
-const modexp_impl       = @import("backends/modexp_impl.zig");
-const ripemd160_impl    = @import("backends/ripemd160_impl.zig");
+const mcl_wrapper = @import("backends/mcl_wrapper.zig");
+const blst_wrapper = @import("backends/blst_wrapper.zig");
+const openssl_wrapper = @import("backends/openssl_wrapper.zig");
+const blake2f_impl = @import("backends/blake2f_impl.zig");
+const modexp_impl = @import("backends/modexp_impl.zig");
+const ripemd160_impl = @import("backends/ripemd160_impl.zig");
 
 // ── Non-precompile operations ─────────────────────────────────────────────────
 
@@ -34,21 +33,24 @@ pub fn keccak256(data: []const u8, output: *[32]u8) void {
 }
 
 pub fn secp256k1_verify(
-    msg:      *const [32]u8,
-    sig:      *const [64]u8,
-    pubkey:   *const [64]u8,
+    msg: *const [32]u8,
+    sig: *const [64]u8,
+    pubkey: *const [64]u8,
     verified: *bool,
 ) void {
-    if (!opts.enable_secp256k1) { verified.* = false; return; }
+    if (!opts.enable_secp256k1) {
+        verified.* = false;
+        return;
+    }
     verified.* = secp256k1_wrapper.verify(msg.*, sig.*, pubkey.*);
 }
 
 // ── Precompile 0x01: ECRECOVER ────────────────────────────────────────────────
 
 pub fn ecrecover(
-    msg:    *const [32]u8,
-    sig:    *const [64]u8,
-    recid:  u8,
+    msg: *const [32]u8,
+    sig: *const [64]u8,
+    recid: u8,
     output: *[64]u8,
 ) bool {
     if (!opts.enable_secp256k1) return false;
@@ -74,10 +76,10 @@ pub fn ripemd160(data: []const u8, output: *[32]u8) void {
 // ── Precompile 0x05: ModExp ───────────────────────────────────────────────────
 
 pub fn modexp(
-    base:    []const u8,
-    exp:     []const u8,
+    base: []const u8,
+    exp: []const u8,
     modulus: []const u8,
-    output:  []u8,
+    output: []u8,
 ) bool {
     return modexp_impl.modexp(base, exp, modulus, output);
 }
@@ -112,10 +114,10 @@ pub fn bn254_pairing(pairs: anytype, verified: *bool) bool {
 
 pub fn blake2f(
     rounds: u32,
-    h:      *[64]u8,
-    m:      *const [128]u8,
-    t:      *const [16]u8,
-    f:      u8,
+    h: *[64]u8,
+    m: *const [128]u8,
+    t: *const [16]u8,
+    f: u8,
 ) bool {
     return blake2f_impl.compress(rounds, h, m, t, f);
 }
@@ -124,10 +126,10 @@ pub fn blake2f(
 
 pub fn kzg_point_eval(
     commitment: *const [48]u8,
-    z:          *const [32]u8,
-    y:          *const [32]u8,
-    proof:      *const [48]u8,
-    verified:   *bool,
+    z: *const [32]u8,
+    y: *const [32]u8,
+    proof: *const [48]u8,
+    verified: *bool,
 ) bool {
     if (!opts.enable_blst) return false;
     const v = blst_wrapper.verifyKzgProof(commitment.*, z.*, y.*, proof.*) catch return false;
@@ -198,11 +200,14 @@ pub fn bls12_map_fp2_to_g2(field_element: *const [96]u8, result: *[192]u8) bool 
 // ── Precompile 0x100: secp256r1 (P-256) ──────────────────────────────────────
 
 pub fn secp256r1_verify(
-    msg:      *const [32]u8,
-    sig:      *const [64]u8,
-    pubkey:   *const [64]u8,
+    msg: *const [32]u8,
+    sig: *const [64]u8,
+    pubkey: *const [64]u8,
     verified: *bool,
 ) void {
-    if (!opts.enable_openssl) { verified.* = false; return; }
+    if (!opts.enable_openssl) {
+        verified.* = false;
+        return;
+    }
     verified.* = openssl_wrapper.verifyP256(msg.*, sig.*, pubkey.*);
 }

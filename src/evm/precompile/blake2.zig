@@ -34,7 +34,7 @@ pub fn blake2fRun(input: []const u8, gas_limit: u64) main.PrecompileResult {
     @memcpy(&h_bytes, input[4..68]);
 
     const m_bytes: *const [128]u8 = input[68..196];
-    const t_bytes: *const [16]u8  = input[196..212];
+    const t_bytes: *const [16]u8 = input[196..212];
 
     if (!accel.blake2f(rounds, &h_bytes, m_bytes, t_bytes, f_flag))
         return .{ .err = main.PrecompileError.Blake2WrongFinalIndicatorFlag };

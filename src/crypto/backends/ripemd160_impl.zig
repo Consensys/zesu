@@ -57,11 +57,21 @@ const KR = [5]u32{ 0x50A28BE6, 0x5C4DD124, 0x6D703EF3, 0x7A6D76E9, 0x00000000 };
 
 // ─── Boolean functions ───────────────────────────────────────────────────────
 
-inline fn f1(x: u32, y: u32, z: u32) u32 { return x ^ y ^ z; }
-inline fn f2(x: u32, y: u32, z: u32) u32 { return (x & y) | (~x & z); }
-inline fn f3(x: u32, y: u32, z: u32) u32 { return (x | ~y) ^ z; }
-inline fn f4(x: u32, y: u32, z: u32) u32 { return (x & z) | (y & ~z); }
-inline fn f5(x: u32, y: u32, z: u32) u32 { return x ^ (y | ~z); }
+inline fn f1(x: u32, y: u32, z: u32) u32 {
+    return x ^ y ^ z;
+}
+inline fn f2(x: u32, y: u32, z: u32) u32 {
+    return (x & y) | (~x & z);
+}
+inline fn f3(x: u32, y: u32, z: u32) u32 {
+    return (x | ~y) ^ z;
+}
+inline fn f4(x: u32, y: u32, z: u32) u32 {
+    return (x & z) | (y & ~z);
+}
+inline fn f5(x: u32, y: u32, z: u32) u32 {
+    return x ^ (y | ~z);
+}
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 
@@ -117,26 +127,48 @@ const Context = struct {
         var w: [16]u32 = undefined;
         for (0..16) |i| w[i] = std.mem.readInt(u32, self.buf[i * 4 ..][0..4], .little);
 
-        var al = self.h[0]; var bl = self.h[1]; var cl = self.h[2]; var dl = self.h[3]; var el = self.h[4];
+        var al = self.h[0];
+        var bl = self.h[1];
+        var cl = self.h[2];
+        var dl = self.h[3];
+        var el = self.h[4];
         for (0..80) |i| {
             const round: u32 = @intCast(i / 16);
             const fv = switch (round) {
-                0 => f1(bl, cl, dl), 1 => f2(bl, cl, dl), 2 => f3(bl, cl, dl),
-                3 => f4(bl, cl, dl), else => f5(bl, cl, dl),
+                0 => f1(bl, cl, dl),
+                1 => f2(bl, cl, dl),
+                2 => f3(bl, cl, dl),
+                3 => f4(bl, cl, dl),
+                else => f5(bl, cl, dl),
             };
             const t = std.math.rotl(u32, al +% fv +% w[RL[i]] +% KL[round], SL[i]) +% el;
-            al = el; el = dl; dl = std.math.rotl(u32, cl, 10); cl = bl; bl = t;
+            al = el;
+            el = dl;
+            dl = std.math.rotl(u32, cl, 10);
+            cl = bl;
+            bl = t;
         }
 
-        var ar = self.h[0]; var br = self.h[1]; var cr = self.h[2]; var dr = self.h[3]; var er = self.h[4];
+        var ar = self.h[0];
+        var br = self.h[1];
+        var cr = self.h[2];
+        var dr = self.h[3];
+        var er = self.h[4];
         for (0..80) |i| {
             const round: u32 = @intCast(i / 16);
             const fv = switch (round) {
-                0 => f5(br, cr, dr), 1 => f4(br, cr, dr), 2 => f3(br, cr, dr),
-                3 => f2(br, cr, dr), else => f1(br, cr, dr),
+                0 => f5(br, cr, dr),
+                1 => f4(br, cr, dr),
+                2 => f3(br, cr, dr),
+                3 => f2(br, cr, dr),
+                else => f1(br, cr, dr),
             };
             const t = std.math.rotl(u32, ar +% fv +% w[RR[i]] +% KR[round], SR[i]) +% er;
-            ar = er; er = dr; dr = std.math.rotl(u32, cr, 10); cr = br; br = t;
+            ar = er;
+            er = dr;
+            dr = std.math.rotl(u32, cr, 10);
+            cr = br;
+            br = t;
         }
 
         const t = self.h[1] +% cl +% dr;

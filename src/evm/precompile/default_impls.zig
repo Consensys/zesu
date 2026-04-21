@@ -6,7 +6,6 @@
 ///
 /// For zkVM builds that need to override specific precompiles, override the
 /// `accelerators` module instead (src/crypto/accelerators.zig, import "accel_impl").
-
 const std = @import("std");
 const T = @import("precompile_types");
 const accel = @import("accelerators");
@@ -16,11 +15,11 @@ const alloc_mod = @import("zevm_allocator");
 
 const FP_LENGTH: usize = 48;
 const PADDED_FP_LENGTH: usize = 64;
-const G1_LENGTH: usize = 2 * FP_LENGTH;        // 96  bytes (unpadded)
+const G1_LENGTH: usize = 2 * FP_LENGTH; // 96  bytes (unpadded)
 const PADDED_G1_LENGTH: usize = 2 * PADDED_FP_LENGTH; // 128 bytes (padded)
-const FP2_LENGTH: usize = 2 * FP_LENGTH;        // 96  bytes
+const FP2_LENGTH: usize = 2 * FP_LENGTH; // 96  bytes
 const PADDED_FP2_LENGTH: usize = 2 * PADDED_FP_LENGTH; // 128 bytes
-const G2_LENGTH: usize = 2 * FP2_LENGTH;        // 192 bytes (unpadded)
+const G2_LENGTH: usize = 2 * FP2_LENGTH; // 192 bytes (unpadded)
 const PADDED_G2_LENGTH: usize = 2 * PADDED_FP2_LENGTH; // 256 bytes (padded)
 const SCALAR_LENGTH: usize = 32;
 
@@ -86,10 +85,10 @@ fn removeG2Padding(padded: []const u8) T.PrecompileError![4][FP_LENGTH]u8 {
 /// Pad a G2 point (192 bytes → 256 bytes).
 fn padG2Point(unpadded: []const u8) [PADDED_G2_LENGTH]u8 {
     var result: [PADDED_G2_LENGTH]u8 = [_]u8{0} ** PADDED_G2_LENGTH;
-    @memcpy(result[16..][0..FP_LENGTH],                unpadded[0..FP_LENGTH]);
-    @memcpy(result[80..][0..FP_LENGTH],                unpadded[FP_LENGTH..][0..FP_LENGTH]);
-    @memcpy(result[144..][0..FP_LENGTH],               unpadded[FP2_LENGTH..][0..FP_LENGTH]);
-    @memcpy(result[208..][0..FP_LENGTH],               unpadded[FP2_LENGTH + FP_LENGTH..][0..FP_LENGTH]);
+    @memcpy(result[16..][0..FP_LENGTH], unpadded[0..FP_LENGTH]);
+    @memcpy(result[80..][0..FP_LENGTH], unpadded[FP_LENGTH..][0..FP_LENGTH]);
+    @memcpy(result[144..][0..FP_LENGTH], unpadded[FP2_LENGTH..][0..FP_LENGTH]);
+    @memcpy(result[208..][0..FP_LENGTH], unpadded[FP2_LENGTH + FP_LENGTH ..][0..FP_LENGTH]);
     return result;
 }
 
@@ -219,7 +218,7 @@ fn bn254PairingImpl(input: []const u8, gas_cost: u64) T.PrecompileResult {
     var pi: usize = 0;
     while (pi < n_pairs) : (pi += 1) {
         const off = pi * 192;
-        if (!bn254FieldElemValid(input[off..][0..32]) or !bn254FieldElemValid(input[off + 32..][0..32]))
+        if (!bn254FieldElemValid(input[off..][0..32]) or !bn254FieldElemValid(input[off + 32 ..][0..32]))
             return .{ .err = T.PrecompileError.Bn254FieldPointNotAMember };
     }
     const pairs = std.mem.bytesAsSlice(Pair, input[0 .. n_pairs * 192]);
@@ -376,7 +375,7 @@ fn bls12G1MsmRun(input: []const u8, gas_limit: u64) T.PrecompileResult {
             return .{ .err = T.PrecompileError.Bls12381G1MsmInputLength };
         @memcpy(pairs[i].point[0..FP_LENGTH], &coords[0]);
         @memcpy(pairs[i].point[FP_LENGTH..G1_LENGTH], &coords[1]);
-        @memcpy(&pairs[i].scalar, input[off + PADDED_G1_LENGTH..][0..SCALAR_LENGTH]);
+        @memcpy(&pairs[i].scalar, input[off + PADDED_G1_LENGTH ..][0..SCALAR_LENGTH]);
     }
 
     var raw: [G1_LENGTH]u8 = undefined;
@@ -401,15 +400,15 @@ fn bls12G2AddRun(input: []const u8, gas_limit: u64) T.PrecompileResult {
         return .{ .err = e };
 
     var a: [G2_LENGTH]u8 = undefined;
-    @memcpy(a[0..FP_LENGTH],                   &a_coords[0]);
-    @memcpy(a[FP_LENGTH..][0..FP_LENGTH],       &a_coords[1]);
-    @memcpy(a[FP2_LENGTH..][0..FP_LENGTH],      &a_coords[2]);
-    @memcpy(a[FP2_LENGTH + FP_LENGTH..][0..FP_LENGTH], &a_coords[3]);
+    @memcpy(a[0..FP_LENGTH], &a_coords[0]);
+    @memcpy(a[FP_LENGTH..][0..FP_LENGTH], &a_coords[1]);
+    @memcpy(a[FP2_LENGTH..][0..FP_LENGTH], &a_coords[2]);
+    @memcpy(a[FP2_LENGTH + FP_LENGTH ..][0..FP_LENGTH], &a_coords[3]);
     var b: [G2_LENGTH]u8 = undefined;
-    @memcpy(b[0..FP_LENGTH],                   &b_coords[0]);
-    @memcpy(b[FP_LENGTH..][0..FP_LENGTH],       &b_coords[1]);
-    @memcpy(b[FP2_LENGTH..][0..FP_LENGTH],      &b_coords[2]);
-    @memcpy(b[FP2_LENGTH + FP_LENGTH..][0..FP_LENGTH], &b_coords[3]);
+    @memcpy(b[0..FP_LENGTH], &b_coords[0]);
+    @memcpy(b[FP_LENGTH..][0..FP_LENGTH], &b_coords[1]);
+    @memcpy(b[FP2_LENGTH..][0..FP_LENGTH], &b_coords[2]);
+    @memcpy(b[FP2_LENGTH + FP_LENGTH ..][0..FP_LENGTH], &b_coords[3]);
 
     var raw: [G2_LENGTH]u8 = undefined;
     if (!accel.bls12_g2_add(&a, &b, &raw))
@@ -444,11 +443,11 @@ fn bls12G2MsmRun(input: []const u8, gas_limit: u64) T.PrecompileResult {
         const off = i * PAIR_LEN;
         const coords = removeG2Padding(input[off..][0..PADDED_G2_LENGTH]) catch
             return .{ .err = T.PrecompileError.Bls12381G2MsmInputLength };
-        @memcpy(pairs[i].point[0..FP_LENGTH],                   &coords[0]);
-        @memcpy(pairs[i].point[FP_LENGTH..][0..FP_LENGTH],       &coords[1]);
-        @memcpy(pairs[i].point[FP2_LENGTH..][0..FP_LENGTH],      &coords[2]);
-        @memcpy(pairs[i].point[FP2_LENGTH + FP_LENGTH..][0..FP_LENGTH], &coords[3]);
-        @memcpy(&pairs[i].scalar, input[off + PADDED_G2_LENGTH..][0..SCALAR_LENGTH]);
+        @memcpy(pairs[i].point[0..FP_LENGTH], &coords[0]);
+        @memcpy(pairs[i].point[FP_LENGTH..][0..FP_LENGTH], &coords[1]);
+        @memcpy(pairs[i].point[FP2_LENGTH..][0..FP_LENGTH], &coords[2]);
+        @memcpy(pairs[i].point[FP2_LENGTH + FP_LENGTH ..][0..FP_LENGTH], &coords[3]);
+        @memcpy(&pairs[i].scalar, input[off + PADDED_G2_LENGTH ..][0..SCALAR_LENGTH]);
     }
 
     var raw: [G2_LENGTH]u8 = undefined;
@@ -481,15 +480,15 @@ fn bls12PairingRun(input: []const u8, gas_limit: u64) T.PrecompileResult {
         const off = i * PAIR_LEN;
         const g1_coords = removeG1Padding(input[off..][0..PADDED_G1_LENGTH]) catch
             return .{ .err = T.PrecompileError.Bls12381PairingInputLength };
-        @memcpy(pairs[i].g1[0..FP_LENGTH],         &g1_coords[0]);
-        @memcpy(pairs[i].g1[FP_LENGTH..G1_LENGTH],  &g1_coords[1]);
+        @memcpy(pairs[i].g1[0..FP_LENGTH], &g1_coords[0]);
+        @memcpy(pairs[i].g1[FP_LENGTH..G1_LENGTH], &g1_coords[1]);
 
-        const g2_coords = removeG2Padding(input[off + PADDED_G1_LENGTH..][0..PADDED_G2_LENGTH]) catch
+        const g2_coords = removeG2Padding(input[off + PADDED_G1_LENGTH ..][0..PADDED_G2_LENGTH]) catch
             return .{ .err = T.PrecompileError.Bls12381PairingInputLength };
-        @memcpy(pairs[i].g2[0..FP_LENGTH],                         &g2_coords[0]);
-        @memcpy(pairs[i].g2[FP_LENGTH..][0..FP_LENGTH],             &g2_coords[1]);
-        @memcpy(pairs[i].g2[FP2_LENGTH..][0..FP_LENGTH],            &g2_coords[2]);
-        @memcpy(pairs[i].g2[FP2_LENGTH + FP_LENGTH..][0..FP_LENGTH], &g2_coords[3]);
+        @memcpy(pairs[i].g2[0..FP_LENGTH], &g2_coords[0]);
+        @memcpy(pairs[i].g2[FP_LENGTH..][0..FP_LENGTH], &g2_coords[1]);
+        @memcpy(pairs[i].g2[FP2_LENGTH..][0..FP_LENGTH], &g2_coords[2]);
+        @memcpy(pairs[i].g2[FP2_LENGTH + FP_LENGTH ..][0..FP_LENGTH], &g2_coords[3]);
     }
 
     var verified: bool = false;
@@ -537,7 +536,7 @@ fn bls12MapFp2ToG2Run(input: []const u8, gas_limit: u64) T.PrecompileResult {
 
     // Fp2 is two 48-byte Fp elements, each padded to 64 bytes (16 zeros + 48 bytes)
     var fe2: [FP2_LENGTH]u8 = undefined;
-    @memcpy(fe2[0..FP_LENGTH],          input[16..][0..FP_LENGTH]);
+    @memcpy(fe2[0..FP_LENGTH], input[16..][0..FP_LENGTH]);
     @memcpy(fe2[FP_LENGTH..FP2_LENGTH], input[80..][0..FP_LENGTH]);
 
     var raw: [G2_LENGTH]u8 = undefined;
