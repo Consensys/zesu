@@ -106,7 +106,7 @@ pub const testing = struct {
     pub fn testContext() !void {
         std.debug.print("Testing Context...\n", .{});
 
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        var gpa = std.heap.DebugAllocator(.{}){};
         defer _ = gpa.deinit();
         const allocator = gpa.allocator();
 
@@ -126,7 +126,7 @@ pub const testing = struct {
     pub fn testEvm() !void {
         std.debug.print("Testing Evm...\n", .{});
 
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        var gpa = std.heap.DebugAllocator(.{}){};
         defer _ = gpa.deinit();
         const allocator = gpa.allocator();
 

@@ -15,7 +15,7 @@ const chain_mod = @import("chain.zig");
 const rpc = @import("rpc.zig");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const backing = gpa.allocator();
 
