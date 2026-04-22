@@ -1,7 +1,7 @@
 const std = @import("std");
 const primitives = @import("primitives");
 const Context = @import("context.zig").Context;
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// Main EVM structure that contains all data needed for execution.
 pub const Evm = struct {

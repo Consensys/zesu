@@ -1,6 +1,6 @@
 const std = @import("std");
 const primitives = @import("primitives");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// EVM memory implementation using a shared buffer
 pub const Memory = struct {

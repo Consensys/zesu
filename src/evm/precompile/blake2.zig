@@ -1,6 +1,6 @@
 const std = @import("std");
 const main = @import("main.zig");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 const accel = @import("accelerators");
 
 /// BLAKE2f compression function precompile (EIP-152)

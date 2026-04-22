@@ -6,7 +6,7 @@ const state = @import("state");
 const bytecode = @import("bytecode");
 const interpreter_mod = @import("interpreter");
 const main = @import("main.zig");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 const validation = @import("validation.zig");
 
 /// Mainnet EVM — heap-allocated wrapper that owns its Instructions, Precompiles, and FrameStack.

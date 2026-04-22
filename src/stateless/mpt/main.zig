@@ -14,7 +14,8 @@ const accel = @import("accelerators");
 
 /// RLP decoder — also re-exported so callers (e.g. io.zig) can reuse it.
 pub const rlp = @import("rlp.zig");
-const nibbles = @import("mpt_nibbles");
+pub const builder = @import("builder.zig");
+const nibbles = @import("nibbles.zig");
 const node = @import("node.zig");
 
 // ─── Public types ──────────────────────────────────────────────────────────────

@@ -6,87 +6,11 @@
 //! 2. Uncomment the blst linking in build.zig
 //! 3. Ensure blst.h is in your include path
 const std = @import("std");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
-// Import blst C API
-// This will fail at compile time if blst.h is not found
-// Install blst: https://github.com/supranational/blst
-const build_options = @import("build_options");
-const c = if (build_options.enable_blst) blk: {
-    break :blk @cImport({
-        @cInclude("blst.h");
-    });
-} else struct {
-    // Stub types when blst is disabled (should not happen by default)
-    pub const blst_fp = extern struct { l: [6]u64 = undefined };
-    pub const blst_fp2 = extern struct { fp: [2]blst_fp = undefined };
-    pub const blst_p1 = extern struct { x: blst_fp = undefined, y: blst_fp = undefined, z: blst_fp = undefined };
-    pub const blst_p1_affine = extern struct { x: blst_fp = undefined, y: blst_fp = undefined };
-    pub const blst_p2 = extern struct { x: blst_fp2 = undefined, y: blst_fp2 = undefined, z: blst_fp2 = undefined };
-    pub const blst_p2_affine = extern struct { x: blst_fp2 = undefined, y: blst_fp2 = undefined };
-    pub const blst_scalar = extern struct { b: [32]u8 = undefined };
-    pub const blst_fp12 = extern struct { fp6: [2]extern struct { fp2: [3]blst_fp2 = undefined } = undefined };
-    pub const BLS12_381_G1 = blst_p1_affine{};
-    pub const BLS12_381_G2 = blst_p2_affine{};
-    pub fn blst_fp_from_bendian(_: *blst_fp, _: *const [48]u8) void {}
-    pub fn blst_bendian_from_fp(_: *[48]u8, _: *const blst_fp) void {}
-    pub fn blst_scalar_from_bendian(_: *blst_scalar, _: *const [32]u8) void {}
-    pub fn blst_p1_affine_on_curve(_: *const blst_p1_affine) bool {
-        return false;
-    }
-    pub fn blst_p1_affine_in_g1(_: *const blst_p1_affine) bool {
-        return false;
-    }
-    pub fn blst_p2_affine_on_curve(_: *const blst_p2_affine) bool {
-        return false;
-    }
-    pub fn blst_p2_affine_in_g2(_: *const blst_p2_affine) bool {
-        return false;
-    }
-    pub fn blst_p1_from_affine(_: *blst_p1, _: *const blst_p1_affine) void {}
-    pub fn blst_p1_to_affine(_: *blst_p1_affine, _: *const blst_p1) void {}
-    pub fn blst_p2_from_affine(_: *blst_p2, _: *const blst_p2_affine) void {}
-    pub fn blst_p2_to_affine(_: *blst_p2_affine, _: *const blst_p2) void {}
-    pub fn blst_p1_add_or_double_affine(_: *blst_p1, _: *const blst_p1, _: *const blst_p1_affine) void {}
-    pub fn blst_p2_add_or_double_affine(_: *blst_p2, _: *const blst_p2, _: *const blst_p2_affine) void {}
-    pub fn blst_p1s_mult_pippenger(_: *blst_p1, _: [*]const *const blst_p1_affine, _: i32, _: [*]const *const u8, _: i32, _: ?*anyopaque) void {}
-    pub fn blst_p2s_mult_pippenger(_: *blst_p2, _: [*]const *const blst_p2_affine, _: i32, _: [*]const *const u8, _: i32, _: ?*anyopaque) void {}
-    pub fn blst_p1s_mult_pippenger_scratch_sizeof(_: usize) usize {
-        return 0;
-    }
-    pub fn blst_p2s_mult_pippenger_scratch_sizeof(_: usize) usize {
-        return 0;
-    }
-    pub fn blst_p1_cneg(_: *blst_p1, _: bool) void {}
-    pub fn blst_p2_cneg(_: *blst_p2, _: bool) void {}
-    pub fn blst_p1_add(_: *blst_p1, _: *const blst_p1, _: *const blst_p1) void {}
-    pub fn blst_p2_add(_: *blst_p2, _: *const blst_p2, _: *const blst_p2) void {}
-    pub fn blst_miller_loop(_: *blst_fp12, _: *const blst_p2_affine, _: *const blst_p1_affine) void {}
-    pub fn blst_fp12_mul(_: *blst_fp12, _: *const blst_fp12, _: *const blst_fp12) void {}
-    pub fn blst_final_exp(_: *blst_fp12, _: *const blst_fp12) void {}
-    pub fn blst_fp12_is_one(_: *const blst_fp12) bool {
-        return false;
-    }
-    pub fn blst_map_to_g1(_: *blst_p1, _: *const blst_fp, _: ?*const anyopaque) void {}
-    pub fn blst_map_to_g2(_: *blst_p2, _: *const blst_fp2, _: ?*const anyopaque) void {}
-    pub fn blst_p1_uncompress(_: *blst_p1_affine, _: *const [48]u8) i32 {
-        return 0;
-    }
-    pub fn blst_p2_uncompress(_: *blst_p2_affine, _: *const [96]u8) i32 {
-        return 0;
-    }
-    pub fn blst_p1_mult(_: *blst_p1, _: *const blst_p1, _: *const blst_scalar, _: i32) void {}
-    pub fn blst_p2_mult(_: *blst_p2, _: *const blst_p2, _: *const blst_scalar, _: i32) void {}
-    pub fn blst_p1_sub(_: *blst_p1, _: *const blst_p1, _: *const blst_p1) void {}
-    pub fn blst_p2_sub(_: *blst_p2, _: *const blst_p2, _: *const blst_p2) void {}
-    pub fn blst_p2_neg(_: *blst_p2, _: *const blst_p2) void {}
-};
-
-/// Check if blst is available
-/// blst is enabled by default, but can be disabled with -Dblst=false
-pub fn isAvailable() bool {
-    return build_options.enable_blst;
-}
+const c = @cImport({
+    @cInclude("blst.h");
+});
 
 /// BLS12-381 field prime p (big-endian, 48 bytes):
 /// p = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab
@@ -134,11 +58,7 @@ fn parseG1Affine(bytes: [96]u8, affine: *c.blst_p1_affine) !bool {
 /// Output: 96-byte unpadded G1 point
 /// Note: EIP-2537 G1Add accepts points not in the prime-order subgroup (only on-curve required)
 pub fn g1Add(a: [96]u8, b: [96]u8) ![96]u8 {
-    if (!isAvailable()) {
-        return error.BlstNotAvailable;
-    }
-
-    var p1_affine: c.blst_p1_affine = undefined;
+var p1_affine: c.blst_p1_affine = undefined;
     var p2_affine: c.blst_p1_affine = undefined;
 
     const a_is_inf = try parseG1Affine(a, &p1_affine);
@@ -188,11 +108,7 @@ pub const PairingPair = struct { g1: [96]u8, g2: [192]u8 };
 /// Note: G1MSM requires points to be in the G1 prime-order subgroup (per EIP-2537)
 ///       Scalars are 32 bytes big-endian (passed directly to pippenger)
 pub fn g1Msm(pairs: []const G1MsmPair) ![96]u8 {
-    if (!isAvailable()) {
-        return error.BlstNotAvailable;
-    }
-
-    if (pairs.len == 0) {
+if (pairs.len == 0) {
         return error.InvalidInput;
     }
 
@@ -294,11 +210,7 @@ fn parseG2Affine(bytes: [192]u8, affine: *c.blst_p2_affine) !bool {
 /// Output: 192-byte unpadded G2 point
 /// Note: EIP-2537 G2Add accepts points not in the prime-order subgroup (only on-curve required)
 pub fn g2Add(a: [192]u8, b: [192]u8) ![192]u8 {
-    if (!isAvailable()) {
-        return error.BlstNotAvailable;
-    }
-
-    var p1_affine: c.blst_p2_affine = undefined;
+var p1_affine: c.blst_p2_affine = undefined;
     var p2_affine: c.blst_p2_affine = undefined;
 
     const a_is_inf = try parseG2Affine(a, &p1_affine);
@@ -349,11 +261,7 @@ pub fn g2Add(a: [192]u8, b: [192]u8) ![192]u8 {
 /// Note: G2MSM requires points to be in the G2 prime-order subgroup (per EIP-2537)
 ///       Scalars are 32 bytes big-endian (passed directly to pippenger)
 pub fn g2Msm(pairs: []const G2MsmPair) ![192]u8 {
-    if (!isAvailable()) {
-        return error.BlstNotAvailable;
-    }
-
-    if (pairs.len == 0) {
+if (pairs.len == 0) {
         return error.InvalidInput;
     }
 
@@ -429,11 +337,7 @@ pub fn g2Msm(pairs: []const G2MsmPair) ![192]u8 {
 /// Returns true if pairing product == 1 (identity in GT)
 /// Pairs where G1 or G2 is the point at infinity are skipped (they contribute 1 to product)
 pub fn pairingCheck(pairs: []const PairingPair) !bool {
-    if (!isAvailable()) {
-        return error.BlstNotAvailable;
-    }
-
-    if (pairs.len == 0) {
+if (pairs.len == 0) {
         return true; // Empty pairing is valid (product of no terms = 1)
     }
 
@@ -523,11 +427,7 @@ pub fn pairingCheck(pairs: []const PairingPair) !bool {
 /// Input: 48-byte field element
 /// Output: 96-byte unpadded G1 point
 pub fn mapFpToG1(fp: [48]u8) ![96]u8 {
-    if (!isAvailable()) {
-        return error.BlstNotAvailable;
-    }
-
-    // EIP-2537: field element must be canonical (0 <= fp < p)
+// EIP-2537: field element must be canonical (0 <= fp < p)
     if (!isFpCanonical(&fp)) {
         return error.NonCanonicalFieldElement;
     }
@@ -555,11 +455,7 @@ pub fn mapFpToG1(fp: [48]u8) ![96]u8 {
 /// Input: 96-byte Fp2 element
 /// Output: 192-byte unpadded G2 point
 pub fn mapFp2ToG2(fp2: [96]u8) ![192]u8 {
-    if (!isAvailable()) {
-        return error.BlstNotAvailable;
-    }
-
-    // EIP-2537: both Fp2 components must be canonical (0 <= x < p)
+// EIP-2537: both Fp2 components must be canonical (0 <= x < p)
     if (!isFpCanonical(fp2[0..48]) or !isFpCanonical(fp2[48..96])) {
         return error.NonCanonicalFieldElement;
     }
@@ -608,11 +504,7 @@ const TRUSTED_SETUP_TAU_G2_BYTES: [96]u8 = .{
 /// This requires the Ethereum KZG trusted setup (tau G2 point)
 /// Verifies: e(commitment - [y]G1, -G2) * e(proof, [τ]G2 - [z]G2) == 1
 pub fn verifyKzgProof(commitment: [48]u8, z: [32]u8, y: [32]u8, proof: [48]u8) !bool {
-    if (!isAvailable()) {
-        return error.BlstNotAvailable;
-    }
-
-    // Parse commitment as compressed G1 point
+// Parse commitment as compressed G1 point
     var commitment_affine: c.blst_p1_affine = undefined;
     if (c.blst_p1_uncompress(&commitment_affine, &commitment) != 0) {
         return false; // Invalid G1 point
@@ -711,7 +603,6 @@ pub fn verifyKzgProof(commitment: [48]u8, z: [32]u8, y: [32]u8, proof: [48]u8) !
 }
 
 pub const BlstError = error{
-    BlstNotAvailable,
     InvalidG1Point,
     InvalidG2Point,
     InvalidInput,

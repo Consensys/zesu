@@ -1,7 +1,7 @@
 const std = @import("std");
 const T = @import("precompile_types");
 const blst_wrapper = @import("blst_wrapper.zig");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// BLS12-381 elliptic curve precompiles — run functions exported below.
 

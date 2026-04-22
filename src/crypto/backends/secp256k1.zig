@@ -1,6 +1,6 @@
 const std = @import("std");
 const T = @import("precompile_types");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 const build_options = @import("build_options");
 // Only analyze the C-wrapper when secp256k1 is enabled; on freestanding targets

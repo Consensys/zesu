@@ -1,7 +1,7 @@
 const std = @import("std");
 const T = @import("precompile_types");
 const mcl_wrapper = @import("mcl_wrapper.zig");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// BN254 elliptic curve precompiles
 pub const add = struct {

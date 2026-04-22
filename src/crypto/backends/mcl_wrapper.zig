@@ -4,63 +4,15 @@
 //! mcl is required by default. Install mcl: https://github.com/herumi/mcl
 const std = @import("std");
 
-// Import mcl C API
 // The Homebrew mcl package is compiled as bn_c384_256 (FP=384-bit, FR=256-bit)
 // which supports both BLS12-381 and BN254.  Using bn_c256.h would compute
 // MCLBN_COMPILED_TIME_VAR=44, but the library expects 46 (4*10+6), causing
 // mclBn_init to return an error and leave all function pointers null.
-const build_options = @import("build_options");
-
-const c = if (build_options.enable_mcl) blk: {
-    break :blk @cImport({
-        @cDefine("MCL_FP_BIT", "384");
-        @cDefine("MCL_FR_BIT", "256");
-        @cInclude("mcl/bn.h");
-    });
-} else struct {
-    // Stub types when mcl is disabled (should not happen by default)
-    pub const mclBnFp = extern struct { d: [6]u64 = .{0} ** 6 };
-    pub const mclBnFp2 = extern struct { d: [2]mclBnFp = [1]mclBnFp{.{}} ** 2 };
-    pub const mclBnG1 = extern struct { x: mclBnFp = .{}, y: mclBnFp = .{}, z: mclBnFp = .{} };
-    pub const mclBnG2 = extern struct { x: mclBnFp2 = .{}, y: mclBnFp2 = .{}, z: mclBnFp2 = .{} };
-    pub const mclBnFr = extern struct { d: [4]u64 = .{0} ** 4 };
-    pub const mclBnGT = extern struct { d: [12]mclBnFp = [1]mclBnFp{.{}} ** 12 };
-    pub const mclSize = usize;
-    pub fn mclBnFp_setBigEndianMod(_: *mclBnFp, _: *const anyopaque, _: mclSize) c_int {
-        return -1;
-    }
-    pub fn mclBnFp_setInt32(_: *mclBnFp, _: c_int) void {}
-    pub fn mclBnFp_getLittleEndian(_: *anyopaque, _: mclSize, _: *const mclBnFp) mclSize {
-        return 0;
-    }
-    pub fn mclBnG1_clear(_: *mclBnG1) void {}
-    pub fn mclBnG1_isZero(_: *const mclBnG1) c_int {
-        return 1;
-    }
-    pub fn mclBnG1_isValid(_: *const mclBnG1) c_int {
-        return 0;
-    }
-    pub fn mclBnG1_add(_: *mclBnG1, _: *const mclBnG1, _: *const mclBnG1) void {}
-    pub fn mclBnG1_mul(_: *mclBnG1, _: *const mclBnG1, _: *const mclBnFr) void {}
-    pub fn mclBnG1_normalize(_: *mclBnG1, _: *const mclBnG1) void {}
-    pub fn mclBnG2_clear(_: *mclBnG2) void {}
-    pub fn mclBnG2_isZero(_: *const mclBnG2) c_int {
-        return 1;
-    }
-    pub fn mclBnG2_isValid(_: *const mclBnG2) c_int {
-        return 0;
-    }
-    pub fn mclBnG2_normalize(_: *mclBnG2, _: *const mclBnG2) void {}
-    pub fn mclBnFr_setBigEndianMod(_: *mclBnFr, _: *const anyopaque, _: mclSize) c_int {
-        return -1;
-    }
-    pub fn mclBn_pairing(_: *mclBnGT, _: *const mclBnG1, _: *const mclBnG2) void {}
-    pub fn mclBnGT_setInt(_: *mclBnGT, _: c_int) void {}
-    pub fn mclBnGT_mul(_: *mclBnGT, _: *const mclBnGT, _: *const mclBnGT) void {}
-    pub fn mclBnGT_isOne(_: *const mclBnGT) i32 {
-        return 0;
-    }
-};
+const c = @cImport({
+    @cDefine("MCL_FP_BIT", "384");
+    @cDefine("MCL_FR_BIT", "256");
+    @cInclude("mcl/bn.h");
+});
 
 // Initialize mcl once (thread-safe initialization)
 var mcl_initialized: std.Thread.Mutex = .{};
@@ -72,19 +24,9 @@ fn initMcl() void {
     defer mcl_initialized.unlock();
 
     if (mcl_init_done) return;
-
-    if (build_options.enable_mcl) {
-        // Initialize mcl with BN254/SNARK1 curve.
-        // MCL_BN_SNARK1=4; MCLBN_COMPILED_TIME_VAR=46 for bn_c384_256 (FP=384, FR=256).
-        _ = c.mclBn_init(4, 46); // 4=MCL_BN_SNARK1, 46=MCLBN_COMPILED_TIME_VAR(384/256)
-        mcl_init_done = true;
-    }
-}
-
-/// Check if mcl is available
-/// mcl is enabled by default, but can be disabled with -Dmcl=false
-pub fn isAvailable() bool {
-    return build_options.enable_mcl;
+    // MCL_BN_SNARK1=4; MCLBN_COMPILED_TIME_VAR=46 for bn_c384_256 (FP=384, FR=256).
+    _ = c.mclBn_init(4, 46);
+    mcl_init_done = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +135,6 @@ fn g2FromEVM(p: *c.mclBnG2, bytes: *const [128]u8) !void {
 /// Input: two 64-byte G1 points (x || y, each 32 bytes, big-endian)
 /// Output: 64-byte G1 point (x || y, big-endian)
 pub fn g1Add(a: [64]u8, b: [64]u8) ![64]u8 {
-    if (!isAvailable()) return error.MclNotAvailable;
     initMcl();
 
     var p1: c.mclBnG1 = undefined;
@@ -213,7 +154,6 @@ pub fn g1Add(a: [64]u8, b: [64]u8) ![64]u8 {
 /// Input: 64-byte G1 point, 32-byte scalar (big-endian)
 /// Output: 64-byte G1 point (x || y, big-endian)
 pub fn g1Mul(point: [64]u8, scalar: [32]u8) ![64]u8 {
-    if (!isAvailable()) return error.MclNotAvailable;
     initMcl();
 
     var p: c.mclBnG1 = undefined;
@@ -238,7 +178,6 @@ pub const PairingPair = struct { g1: [64]u8, g2: [128]u8 };
 /// Input: array of (G1, G2) point pairs
 /// Returns true if pairing product equals identity (pairing is valid)
 pub fn pairingCheck(pairs: []const PairingPair) !bool {
-    if (!isAvailable()) return error.MclNotAvailable;
     if (pairs.len == 0) return true;
     initMcl();
 
@@ -264,7 +203,6 @@ pub fn pairingCheck(pairs: []const PairingPair) !bool {
 }
 
 pub const MclError = error{
-    MclNotAvailable,
     InvalidG1Point,
     InvalidG2Point,
     InvalidInput,

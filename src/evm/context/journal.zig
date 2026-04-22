@@ -3,7 +3,7 @@ const primitives = @import("primitives");
 const state = @import("state");
 const bytecode = @import("bytecode");
 const database = @import("database");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// Journal entry factory functions
 pub const JournalEntryFactory = struct {

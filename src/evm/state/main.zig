@@ -1,7 +1,7 @@
 const std = @import("std");
 const primitives = @import("primitives");
 const bytecode = @import("bytecode");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// Account and storage state management for the EVM.
 /// Account information that contains balance, nonce, code hash and code

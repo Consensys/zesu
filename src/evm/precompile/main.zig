@@ -14,11 +14,11 @@ pub const PrecompileFn = T.PrecompileFn;
 // native_impls.zig (all host-OS implementations).  Inject a custom module via
 //   precompile_module.addImport("precompile_implementations", your_module)
 // to supply alternative implementations (e.g. zkVM hardware circuits).
-const impls = @import("precompile_implementations");
+const impls = @import("default_impls.zig");
 
 // Allocator used by Precompiles hash-maps.
 // Inject a custom "zevm_allocator" module in build.zig to control this.
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 // Pure-Zig precompile modules — safe to compile on any target (no C deps).
 pub const identity = @import("identity.zig");

@@ -9,7 +9,7 @@
 const std = @import("std");
 const T = @import("precompile_types");
 const accel = @import("accelerators");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 // ── BLS12-381 EIP-2537 padding constants ─────────────────────────────────────
 

@@ -7,7 +7,7 @@ const std = @import("std");
 
 const types = @import("executor_types");
 const rlp = @import("./rlp_encode.zig");
-const mpt_builder = @import("mpt_builder");
+const mpt_builder = @import("mpt").builder;
 const mpt = @import("mpt");
 
 // ─── Logs hash ────────────────────────────────────────────────────────────────

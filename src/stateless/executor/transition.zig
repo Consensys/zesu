@@ -18,7 +18,7 @@ const rlp = @import("./rlp_encode.zig");
 const precompile_mod = @import("precompile");
 const accel = @import("accelerators");
 const output_mod = @import("./output.zig");
-const alloc_mod = @import("./executor_allocator.zig");
+const alloc_mod = @import("zesu_allocator");
 
 const bal_mod = @import("./bal.zig");
 

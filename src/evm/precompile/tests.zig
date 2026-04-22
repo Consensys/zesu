@@ -134,7 +134,7 @@ test "RIPEMD-160 precompile - out of gas" {
 }
 
 test "ECRECOVER precompile - invalid input (wrong v value)" {
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     var input: [128]u8 = undefined;
     @memset(&input, 0);
     input[63] = 26; // Invalid v value (not 27 or 28)
@@ -148,7 +148,7 @@ test "ECRECOVER precompile - invalid input (wrong v value)" {
 }
 
 test "ECRECOVER precompile - invalid input (v not padded)" {
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     var input: [128]u8 = undefined;
     @memset(&input, 0);
     input[32] = 1; // Non-zero byte before v
@@ -163,7 +163,7 @@ test "ECRECOVER precompile - invalid input (v not padded)" {
 }
 
 test "ECRECOVER precompile - valid format but invalid signature" {
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     var input: [128]u8 = undefined;
     @memset(&input, 0);
     input[63] = 27; // Valid v value
@@ -177,7 +177,7 @@ test "ECRECOVER precompile - valid format but invalid signature" {
 }
 
 test "ECRECOVER precompile - out of gas" {
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     var input: [128]u8 = undefined;
     @memset(&input, 0);
     input[63] = 27;
@@ -189,7 +189,7 @@ test "ECRECOVER precompile - out of gas" {
 }
 
 test "ECRECOVER precompile - short input" {
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const input = "short";
     const result = impls.ecrecover(input, 10000);
 
@@ -200,7 +200,7 @@ test "ECRECOVER precompile - short input" {
 }
 
 test "ECRECOVER precompile - known test vector" {
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     // Test with a known signature recovery case
     // This is a simplified test - in production you'd use a real signature
     var input: [128]u8 = undefined;
@@ -412,7 +412,7 @@ test "BN254 Add precompile - input validation" {
     var input: [128]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_istanbul(&input, 1000);
 
     try testing.expect(result == .success);
@@ -423,7 +423,7 @@ test "BN254 Add precompile - input validation" {
 
 test "BN254 Add precompile - out of gas" {
     const input = "";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_istanbul(input, 100);
 
     try testing.expect(result == .err);
@@ -434,7 +434,7 @@ test "BN254 Mul precompile - input validation" {
     var input: [96]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 10000);
 
     try testing.expect(result == .success);
@@ -447,7 +447,7 @@ test "BN254 Pairing precompile - input validation" {
     var input: [192]u8 = undefined; // One pair (G1 + G2)
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 100000);
 
     try testing.expect(result == .success);
@@ -461,7 +461,7 @@ test "BN254 Pairing precompile - invalid input length" {
     var input: [100]u8 = undefined; // Not a multiple of 192
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 100000);
 
     try testing.expect(result == .err);
@@ -480,7 +480,7 @@ test "KZG Point Evaluation - input validation" {
     input[0] = 0x01; // Version
     // Rest will be SHA-256 hash of commitment
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(&input, 100000);
 
     // Will fail on version mismatch or proof verification, but should handle input correctly
@@ -490,7 +490,7 @@ test "KZG Point Evaluation - input validation" {
 
 test "KZG Point Evaluation - wrong input length" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(input, 100000);
 
     try testing.expect(result == .err);
@@ -501,7 +501,7 @@ test "KZG Point Evaluation - out of gas" {
     var input: [192]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(&input, 1000); // Not enough gas
 
     try testing.expect(result == .err);
@@ -516,7 +516,7 @@ test "BLS12-381 G1 Add - input validation" {
     var input: [256]u8 = undefined; // 2 * 128 bytes (padded G1 points)
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_add(&input, 1000);
 
     try testing.expect(result == .success);
@@ -527,7 +527,7 @@ test "BLS12-381 G1 Add - input validation" {
 
 test "BLS12-381 G1 Add - wrong input length" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_add(input, 1000);
 
     try testing.expect(result == .err);
@@ -538,7 +538,7 @@ test "BLS12-381 G1 Add - out of gas" {
     var input: [256]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_add(&input, 100);
 
     try testing.expect(result == .err);
@@ -549,7 +549,7 @@ test "BLS12-381 G2 Add - input validation" {
     var input: [512]u8 = undefined; // 2 * 256 bytes (padded G2 points)
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_add(&input, 1000);
 
     try testing.expect(result == .success);
@@ -563,7 +563,7 @@ test "BLS12-381 G1 MSM - input validation" {
     var input: [160]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 100000);
 
     try testing.expect(result == .success);
@@ -578,7 +578,7 @@ test "BLS12-381 G2 MSM - input validation" {
     var input: [288]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_msm(&input, 100000);
 
     try testing.expect(result == .success);
@@ -593,7 +593,7 @@ test "BLS12-381 Pairing - input validation" {
     var input: [384]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_pairing(&input, 100000);
 
     try testing.expect(result == .success);
@@ -607,7 +607,7 @@ test "BLS12-381 Pairing - invalid input length" {
     var input: [100]u8 = undefined; // Not a multiple of 384
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_pairing(&input, 100000);
 
     try testing.expect(result == .err);
@@ -618,7 +618,7 @@ test "BLS12-381 MapFpToG1 - input validation" {
     var input: [64]u8 = undefined; // Padded Fp element
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp_to_g1(&input, 10000);
 
     try testing.expect(result == .success);
@@ -631,7 +631,7 @@ test "BLS12-381 MapFp2ToG2 - input validation" {
     var input: [128]u8 = undefined; // Padded Fp2 element
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp2_to_g2(&input, 50000);
 
     try testing.expect(result == .success);
@@ -648,7 +648,7 @@ test "P256Verify - input validation" {
     var input: [160]u8 = undefined; // 32 (msg) + 32 (r) + 32 (s) + 32 (x) + 32 (y)
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.p256verify(&input, 10000);
 
     try testing.expect(result == .success);
@@ -659,7 +659,7 @@ test "P256Verify - input validation" {
 
 test "P256Verify - wrong input length" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.p256verify(input, 10000);
 
     try testing.expect(result == .success);
@@ -672,7 +672,7 @@ test "P256Verify - out of gas" {
     var input: [160]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.p256verify(&input, 1000);
 
     try testing.expect(result == .err);
@@ -683,7 +683,7 @@ test "P256Verify Osaka - different gas cost" {
     var input: [160]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.p256verify_osaka(&input, 10000);
 
     try testing.expect(result == .success);
@@ -742,7 +742,7 @@ test "BN254 Add precompile - Byzantium gas cost" {
     var input: [128]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_byzantium(&input, 1000);
 
     try testing.expect(result == .success);
@@ -755,7 +755,7 @@ test "BN254 Mul precompile - Byzantium gas cost" {
     var input: [96]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_byzantium(&input, 50000);
 
     try testing.expect(result == .success);
@@ -769,7 +769,7 @@ test "BN254 Pairing precompile - multiple pairs" {
     var input: [384]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 200000);
 
     try testing.expect(result == .success);
@@ -783,7 +783,7 @@ test "BN254 Pairing precompile - Byzantium gas cost" {
     var input: [192]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_byzantium(&input, 200000);
 
     try testing.expect(result == .success);
@@ -798,7 +798,7 @@ test "BLS12-381 G1 MSM - multiple points" {
     var input: [480]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 100000);
 
     try testing.expect(result == .success);
@@ -813,7 +813,7 @@ test "BLS12-381 G1 MSM - invalid input length" {
     var input: [200]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 100000);
 
     // Should still succeed (will calculate k based on available input)
@@ -825,7 +825,7 @@ test "BLS12-381 MapFpToG1 - out of gas" {
     var input: [64]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp_to_g1(&input, 1000);
 
     try testing.expect(result == .err);
@@ -836,7 +836,7 @@ test "BLS12-381 MapFp2ToG2 - out of gas" {
     var input: [128]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp2_to_g2(&input, 1000);
 
     try testing.expect(result == .err);
@@ -847,7 +847,7 @@ test "BLS12-381 G2 Add - out of gas" {
     var input: [512]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_add(&input, 100);
 
     try testing.expect(result == .err);
@@ -858,7 +858,7 @@ test "BLS12-381 G1 MSM - out of gas" {
     var input: [160]u8 = undefined; // 1 pair: 128-byte padded G1 + 32-byte scalar
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 1000);
 
     try testing.expect(result == .err);
@@ -869,7 +869,7 @@ test "BLS12-381 G2 MSM - out of gas" {
     var input: [288]u8 = undefined; // 1 pair: 256-byte padded G2 + 32-byte scalar
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_msm(&input, 1000);
 
     try testing.expect(result == .err);
@@ -880,7 +880,7 @@ test "BLS12-381 Pairing - out of gas" {
     var input: [384]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_pairing(&input, 1000);
 
     try testing.expect(result == .err);
@@ -891,7 +891,7 @@ test "BN254 Mul precompile - out of gas" {
     var input: [96]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 1000);
 
     try testing.expect(result == .err);
@@ -902,7 +902,7 @@ test "BN254 Pairing precompile - out of gas" {
     var input: [192]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 1000);
 
     try testing.expect(result == .err);
@@ -911,7 +911,7 @@ test "BN254 Pairing precompile - out of gas" {
 
 test "BN254 Pairing precompile - empty input" {
     const input = "";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(input, 100000);
 
     // Empty input should be valid (0 pairs)
@@ -931,7 +931,7 @@ test "BLS12-381 G1 Add - identity point addition" {
     @memset(&input, 0);
     // Both points are zero (identity)
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_add(&input, 1000);
 
     try testing.expect(result == .success);
@@ -946,7 +946,7 @@ test "BLS12-381 G1 Add - known test vector" {
     @memset(&input, 0);
     // Both points are identity (all zeros)
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_add(&input, 1000);
 
     try testing.expect(result == .success);
@@ -957,7 +957,7 @@ test "BLS12-381 G1 Add - known test vector" {
 
 test "BLS12-381 G1 Add - invalid input length (too short)" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_add(input, 1000);
 
     try testing.expect(result == .err);
@@ -968,7 +968,7 @@ test "BLS12-381 G1 Add - invalid input length (too long)" {
     var input: [300]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_add(&input, 1000);
 
     try testing.expect(result == .err);
@@ -983,7 +983,7 @@ test "BLS12-381 G1 MSM - single point scalar multiplication" {
     // Set scalar to 1 (big-endian 32 bytes at offset 128; last byte = 1)
     input[159] = 1;
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 50000);
 
     try testing.expect(result == .success);
@@ -1005,7 +1005,7 @@ test "BLS12-381 G1 MSM - multiple points with discount" {
         input[scalar_last] = @intCast(i + 1);
     }
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 100000);
 
     try testing.expect(result == .success);
@@ -1021,7 +1021,7 @@ test "BLS12-381 G1 MSM - large number of points" {
     var input: [16000]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 10000000);
 
     try testing.expect(result == .success);
@@ -1033,7 +1033,7 @@ test "BLS12-381 G1 MSM - large number of points" {
 
 test "BLS12-381 G1 MSM - invalid input length (too short)" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(input, 100000);
 
     try testing.expect(result == .err);
@@ -1045,7 +1045,7 @@ test "BLS12-381 G1 MSM - invalid input length (not multiple)" {
     var input: [193]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 100000);
 
     // Should still succeed but use truncated input
@@ -1056,7 +1056,7 @@ test "BLS12-381 G2 Add - identity point addition" {
     var input: [512]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_add(&input, 1000);
 
     try testing.expect(result == .success);
@@ -1071,7 +1071,7 @@ test "BLS12-381 G2 Add - known test vector" {
     @memset(&input, 0);
     // Both points are identity (all zeros)
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_add(&input, 1000);
 
     try testing.expect(result == .success);
@@ -1082,7 +1082,7 @@ test "BLS12-381 G2 Add - known test vector" {
 
 test "BLS12-381 G2 Add - invalid input length" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_add(input, 1000);
 
     try testing.expect(result == .err);
@@ -1095,7 +1095,7 @@ test "BLS12-381 G2 MSM - single point" {
     @memset(&input, 0);
     input[287] = 1; // Set scalar (last byte)
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_msm(&input, 100000);
 
     try testing.expect(result == .success);
@@ -1110,7 +1110,7 @@ test "BLS12-381 G2 MSM - multiple points" {
     var input: [864]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_msm(&input, 200000);
 
     try testing.expect(result == .success);
@@ -1121,7 +1121,7 @@ test "BLS12-381 G2 MSM - multiple points" {
 
 test "BLS12-381 G2 MSM - invalid input length" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_msm(input, 100000);
 
     try testing.expect(result == .err);
@@ -1134,7 +1134,7 @@ test "BLS12-381 Pairing - single pair (identity check)" {
     @memset(&input, 0);
     // All zeros = identity points
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_pairing(&input, 100000);
 
     try testing.expect(result == .success);
@@ -1151,7 +1151,7 @@ test "BLS12-381 Pairing - multiple pairs" {
     var input: [1920]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_pairing(&input, 500000);
 
     try testing.expect(result == .success);
@@ -1165,7 +1165,7 @@ test "BLS12-381 Pairing - invalid input length (not multiple of 384)" {
     var input: [400]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_pairing(&input, 100000);
 
     try testing.expect(result == .err);
@@ -1174,7 +1174,7 @@ test "BLS12-381 Pairing - invalid input length (not multiple of 384)" {
 
 test "BLS12-381 Pairing - empty input" {
     const input = "";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_pairing(input, 100000);
 
     // EIP-2537: empty input (0 pairs) is invalid — input must be a non-zero multiple of 384.
@@ -1186,7 +1186,7 @@ test "BLS12-381 MapFpToG1 - zero field element" {
     var input: [64]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp_to_g1(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1200,7 +1200,7 @@ test "BLS12-381 MapFpToG1 - non-zero field element" {
     @memset(&input, 0);
     input[63] = 0x01; // Set field element to 1
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp_to_g1(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1211,7 +1211,7 @@ test "BLS12-381 MapFpToG1 - non-zero field element" {
 
 test "BLS12-381 MapFpToG1 - invalid input length" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp_to_g1(input, 10000);
 
     try testing.expect(result == .err);
@@ -1222,7 +1222,7 @@ test "BLS12-381 MapFp2ToG2 - zero field element" {
     var input: [128]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp2_to_g2(&input, 50000);
 
     try testing.expect(result == .success);
@@ -1237,7 +1237,7 @@ test "BLS12-381 MapFp2ToG2 - non-zero field element" {
     input[63] = 0x01; // Set c0
     input[127] = 0x02; // Set c1
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp2_to_g2(&input, 50000);
 
     try testing.expect(result == .success);
@@ -1248,7 +1248,7 @@ test "BLS12-381 MapFp2ToG2 - non-zero field element" {
 
 test "BLS12-381 MapFp2ToG2 - invalid input length" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_map_fp2_to_g2(input, 50000);
 
     try testing.expect(result == .err);
@@ -1263,7 +1263,7 @@ test "BN254 Add - identity point addition" {
     var input: [128]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_istanbul(&input, 1000);
 
     try testing.expect(result == .success);
@@ -1282,7 +1282,7 @@ test "BN254 Add - generator point addition" {
 
     // Second point is identity
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_istanbul(&input, 1000);
 
     try testing.expect(result == .success);
@@ -1295,7 +1295,7 @@ test "BN254 Add - invalid point (not on curve)" {
     var input: [128]u8 = undefined;
     @memset(&input, 0xFF); // All 0xFF is likely not a valid point
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_istanbul(&input, 1000);
 
     // Should return error for invalid point
@@ -1307,7 +1307,7 @@ test "BN254 Add - short input (right-padded)" {
     // "short" right-padded to 128 bytes: x[0..5] = {0x73,0x68,0x6f,0x72,0x74,...}
     // This x value exceeds the BN254 field modulus (starts with 0x30), so it's invalid.
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_istanbul(input, 1000);
 
     try testing.expect(result == .err);
@@ -1319,7 +1319,7 @@ test "BN254 Mul - identity point multiplication" {
     @memset(&input, 0);
     // Point is identity, scalar is 0
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1333,7 +1333,7 @@ test "BN254 Mul - scalar multiplication by 1" {
     @memset(&input, 0);
     input[95] = 1; // Set scalar to 1
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1349,7 +1349,7 @@ test "BN254 Mul - large scalar" {
     // Scalar: max value (0xFF * 32 bytes)
     @memset(input[64..96], 0xFF);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1361,7 +1361,7 @@ test "BN254 Mul - large scalar" {
 test "BN254 Mul - short input (right-padded)" {
     // "short" right-padded: x[0..5] = {0x73,0x68,0x6f,0x72,0x74,...} > field modulus
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(input, 10000);
 
     try testing.expect(result == .err);
@@ -1373,7 +1373,7 @@ test "BN254 Pairing - known identity pairing" {
     var input: [192]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 100000);
 
     try testing.expect(result == .success);
@@ -1390,7 +1390,7 @@ test "BN254 Pairing - multiple pairs with identity" {
     var input: [576]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 200000);
 
     try testing.expect(result == .success);
@@ -1404,7 +1404,7 @@ test "BN254 Pairing - invalid input length (not multiple of 192)" {
     var input: [200]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 100000);
 
     try testing.expect(result == .err);
@@ -1429,7 +1429,7 @@ test "BN254 Add - real test vector: generator + generator" {
     input[95] = 0x01; // x = 1
     input[127] = 0x02; // y = 2
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_istanbul(&input, 1000);
 
     try testing.expect(result == .success);
@@ -1467,7 +1467,7 @@ test "BN254 Add - commutativity: P1 + P2 == P2 + P1" {
     input2[95] = 0x01;
     input2[127] = 0x02;
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result1 = impls.bn254_add_istanbul(&input1, 1000);
     const result2 = impls.bn254_add_istanbul(&input2, 1000);
 
@@ -1488,7 +1488,7 @@ test "BN254 Add - identity element: P + 0 == P" {
     // Identity: (0, 0)
     // Already zero from memset
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_add_istanbul(&input, 1000);
 
     try testing.expect(result == .success);
@@ -1508,7 +1508,7 @@ test "BN254 Mul - real test vector: generator * 2" {
     // Scalar: 2
     input[95] = 0x02;
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1527,7 +1527,7 @@ test "BN254 Mul - scalar zero: P * 0 == identity" {
     input[63] = 0x02;
     // Scalar: 0 (already zero from memset)
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1555,7 +1555,7 @@ test "BN254 Mul - scalar one: P * 1 == P" {
     // Scalar: 1
     input[95] = 0x01;
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1575,7 +1575,7 @@ test "BN254 Mul - large scalar multiplication" {
     // Large scalar: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
     @memset(input[64..96], 0xFF);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_mul_istanbul(&input, 10000);
 
     try testing.expect(result == .success);
@@ -1600,7 +1600,7 @@ test "BN254 Pairing - real test vector: e(G1, G2) == 1" {
     // Identity pairing: e(0, 0) = 1
     // (Already zeros from memset)
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 100000);
 
     try testing.expect(result == .success);
@@ -1621,7 +1621,7 @@ test "BN254 Pairing - bilinearity: e(a*G1, b*G2) == e(G1, G2)^(a*b)" {
     // Both points are identity
     // e(0, 0) = 1
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 100000);
 
     try testing.expect(result == .success);
@@ -1639,7 +1639,7 @@ test "BN254 Pairing - multiple pairs: product of pairings" {
     // Second pair: both identity
     // Product: 1 * 1 = 1
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 200000);
 
     try testing.expect(result == .success);
@@ -1659,7 +1659,7 @@ test "BN254 Pairing - invalid G1 point" {
     // Set G2 to identity
     @memset(input[64..192], 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 100000);
 
     // Should return error for invalid point
@@ -1678,7 +1678,7 @@ test "BN254 Pairing - invalid G2 point" {
     // G2 is invalid (all 0xFF)
     @memset(input[64..192], 0xFF);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 100000);
 
     // Should return error for invalid point
@@ -1694,7 +1694,7 @@ test "BN254 Add - Byzantium vs Istanbul gas costs" {
     input[31] = 0x01;
     input[63] = 0x02;
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const byz_result = impls.bn254_add_byzantium(&input, 1000);
     const ist_result = impls.bn254_add_istanbul(&input, 1000);
 
@@ -1714,7 +1714,7 @@ test "BN254 Mul - Byzantium vs Istanbul gas costs" {
     input[63] = 0x02;
     input[95] = 0x02;
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const byz_result = impls.bn254_mul_byzantium(&input, 50000);
     const ist_result = impls.bn254_mul_istanbul(&input, 50000);
 
@@ -1731,7 +1731,7 @@ test "BN254 Pairing - Byzantium vs Istanbul gas costs" {
     var input: [192]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const byz_result = impls.bn254_pairing_byzantium(&input, 200000);
     const ist_result = impls.bn254_pairing_istanbul(&input, 200000);
 
@@ -1769,7 +1769,7 @@ test "KZG Point Evaluation - valid format with matching version" {
     @memcpy(input[96..144], &commitment);
     // z, y, proof remain zero — will fail proof verification
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(&input, 100000);
 
     // Hash matches commitment, so passes version check; fails on proof verification
@@ -1791,7 +1791,7 @@ test "KZG Point Evaluation - version mismatch" {
     @memcpy(input[0..32], &computed_hash);
     @memcpy(input[96..144], &commitment);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(&input, 100000);
 
     try testing.expect(result == .err);
@@ -1800,7 +1800,7 @@ test "KZG Point Evaluation - version mismatch" {
 
 test "KZG Point Evaluation - invalid input length (too short)" {
     const input = "short";
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(input, 100000);
 
     try testing.expect(result == .err);
@@ -1811,7 +1811,7 @@ test "KZG Point Evaluation - invalid input length (too long)" {
     var input: [200]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(&input, 100000);
 
     try testing.expect(result == .err);
@@ -1834,7 +1834,7 @@ test "KZG Point Evaluation - return value format" {
     @memcpy(input[96..144], &commitment);
 
     // With invalid proof, should fail verification
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(&input, 100000);
 
     // Should fail on proof verification
@@ -1847,7 +1847,7 @@ test "KZG Point Evaluation - gas cost verification" {
     var input: [192]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(&input, 100000);
 
     // Even if it fails, should check gas first
@@ -1870,7 +1870,7 @@ test "KZG Point Evaluation - zero commitment" {
     versioned_hash[0] = 0x01;
     @memcpy(input[0..32], &versioned_hash);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.kzg_point_evaluation(&input, 100000);
 
     // Should fail on proof verification
@@ -1890,7 +1890,7 @@ test "BLS12-381 G1 MSM - maximum discount table entry" {
     var input: [input_size]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g1_msm(&input, 10000000);
 
     try testing.expect(result == .success);
@@ -1906,7 +1906,7 @@ test "BLS12-381 G2 MSM - maximum discount table entry" {
     var input: [input_size]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bls12_g2_msm(&input, 10000000);
 
     try testing.expect(result == .success);
@@ -1922,7 +1922,7 @@ test "BN254 Pairing - maximum practical pairs" {
     var input: [input_size]u8 = undefined;
     @memset(&input, 0);
 
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
     const result = impls.bn254_pairing_istanbul(&input, 1000000);
 
     try testing.expect(result == .success);
@@ -1934,7 +1934,7 @@ test "BN254 Pairing - maximum practical pairs" {
 
 test "All precompiles - gas limit boundary conditions" {
     // Test that precompiles correctly handle gas limits at exact cost
-    const impls = @import("precompile_implementations");
+    const impls = @import("default_impls.zig");
 
     // G1 Add: exact gas
     var g1_input: [256]u8 = undefined;

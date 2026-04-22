@@ -1,6 +1,6 @@
 const std = @import("std");
 const T = @import("precompile_types");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// Base gas fee for secp256r1 p256verify operation
 pub const P256VERIFY_BASE_GAS_FEE: u64 = 3450;

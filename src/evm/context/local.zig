@@ -1,5 +1,5 @@
 const std = @import("std");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// Local context that is filled by execution.
 pub const LocalContext = struct {

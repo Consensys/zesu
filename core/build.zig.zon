@@ -1,0 +1,11 @@
+.{
+    .name = .zesu_core,
+    .fingerprint = 0x6d6aa7b739d17d8c,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.1",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{},
+}

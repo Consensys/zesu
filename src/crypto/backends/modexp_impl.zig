@@ -5,7 +5,7 @@
 /// Implements the raw crypto primitive; gas/ABI handling lives in the
 /// precompile dispatch layer (src/evm/precompile/).
 const std = @import("std");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// Compute base^exp % modulus and write the result into `output`.
 /// `output` must be pre-zeroed and exactly `modulus.len` bytes.

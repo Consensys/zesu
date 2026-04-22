@@ -1,7 +1,7 @@
 const std = @import("std");
 const primitives = @import("primitives");
 const main = @import("main.zig");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 /// Identity precompile
 pub const FUN = main.Precompile.new(

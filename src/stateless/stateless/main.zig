@@ -7,7 +7,7 @@ const rlp_decode = @import("rlp_decode");
 const input = @import("input");
 const mpt = @import("mpt");
 const executor = @import("executor");
-const alloc_mod = @import("main_allocator");
+const alloc_mod = @import("zesu_allocator");
 const zkvm_io = @import("zkvm_io");
 
 const InputSource = union(enum) {

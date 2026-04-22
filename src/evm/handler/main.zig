@@ -4,7 +4,7 @@ const context = @import("context");
 const interpreter = @import("interpreter");
 const precompile = @import("precompile");
 const database = @import("database");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 // Import handler modules
 const mainnet_builder = @import("mainnet_builder.zig");

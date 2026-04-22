@@ -5,7 +5,7 @@
 
 const std = @import("std");
 const testing = std.testing;
-const impls = @import("precompile_implementations");
+const impls = @import("default_impls.zig");
 
 const g1_add_csv = @embedFile("testdata/eip196_g1_add.csv");
 const g1_mul_csv = @embedFile("testdata/eip196_g1_mul.csv");

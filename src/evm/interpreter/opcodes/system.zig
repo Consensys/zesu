@@ -2,7 +2,7 @@ const std = @import("std");
 const primitives = @import("primitives");
 const InstructionContext = @import("../instruction_context.zig").InstructionContext;
 const gas_costs = @import("../gas_costs.zig");
-const alloc_mod = @import("zevm_allocator");
+const alloc_mod = @import("zesu_allocator");
 
 // ---------------------------------------------------------------------------
 // Memory expansion helper

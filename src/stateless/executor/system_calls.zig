@@ -20,7 +20,7 @@ const primitives = @import("primitives");
 const input = @import("executor_types");
 const context_mod = @import("context");
 const handler_mod = @import("handler");
-const alloc_mod = @import("./executor_allocator.zig");
+const alloc_mod = @import("zesu_allocator");
 
 // ─── Well-known addresses ─────────────────────────────────────────────────────
 

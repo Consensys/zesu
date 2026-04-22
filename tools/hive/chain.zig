@@ -10,7 +10,7 @@ const types = executor.executor_types;
 const fork_mod = @import("hardfork");
 const tx_decode_mod = executor.executor_tx_decode;
 const rlp_dec = @import("mpt").rlp;
-const mpt_builder = @import("mpt_builder");
+const mpt_builder = @import("mpt").builder;
 const rlp_enc = executor.executor_rlp_encode;
 const ForkSchedule = @import("fork_env.zig").ForkSchedule;
 

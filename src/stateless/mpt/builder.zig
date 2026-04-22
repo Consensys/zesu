@@ -5,7 +5,7 @@
 //!
 //! Reference: Ethereum Yellow Paper Appendix C.
 const std = @import("std");
-const nibbles = @import("mpt_nibbles");
+const nibbles = @import("nibbles.zig");
 
 pub const EMPTY_TRIE_HASH: [32]u8 = [_]u8{
     0x56, 0xe8, 0x1f, 0x17, 0x1b, 0xcc, 0x55, 0xa6,
