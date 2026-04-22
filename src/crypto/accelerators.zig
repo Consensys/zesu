@@ -5,16 +5,15 @@
 /// Build variants:
 ///   zesu (native):     accel_impl = default.zig        (std.crypto + C libs)
 ///   zesu-core (zkvm):  accel_impl = extern_bridge.zig  (extern fn zkvm_* → zisk_accel.o)
-
 const impl = @import("accel_impl");
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
 
-pub const Hash32   = [32]u8;
-pub const Bytes16  = [16]u8;
-pub const Bytes48  = [48]u8;
-pub const Bytes64  = [64]u8;
-pub const Bytes96  = [96]u8;
+pub const Hash32 = [32]u8;
+pub const Bytes16 = [16]u8;
+pub const Bytes48 = [48]u8;
+pub const Bytes64 = [64]u8;
+pub const Bytes96 = [96]u8;
 pub const Bytes128 = [128]u8;
 pub const Bytes192 = [192]u8;
 
@@ -30,13 +29,13 @@ pub const Bn254PairingPair = extern struct {
 
 /// BLS12-381 G1 point + scalar pair for G1 MSM (precompile 0x0c).
 pub const Bls12G1MsmPair = extern struct {
-    point:  Bytes96,
+    point: Bytes96,
     scalar: Hash32,
 };
 
 /// BLS12-381 G2 point + scalar pair for G2 MSM (precompile 0x0e).
 pub const Bls12G2MsmPair = extern struct {
-    point:  Bytes192,
+    point: Bytes192,
     scalar: Hash32,
 };
 
@@ -53,9 +52,9 @@ pub inline fn keccak256(data: []const u8, output: *Hash32) void {
 }
 
 pub inline fn secp256k1_verify(
-    msg:      *const Hash32,
-    sig:      *const Bytes64,
-    pubkey:   *const Bytes64,
+    msg: *const Hash32,
+    sig: *const Bytes64,
+    pubkey: *const Bytes64,
     verified: *bool,
 ) void {
     impl.secp256k1_verify(msg, sig, pubkey, verified);
@@ -63,9 +62,9 @@ pub inline fn secp256k1_verify(
 
 /// ECRECOVER (precompile 0x01) — recovers uncompressed secp256k1 public key.
 pub inline fn ecrecover(
-    msg:    *const Hash32,
-    sig:    *const Bytes64,
-    recid:  u8,
+    msg: *const Hash32,
+    sig: *const Bytes64,
+    recid: u8,
     output: *Bytes64,
 ) bool {
     return impl.ecrecover(msg, sig, recid, output);
@@ -83,10 +82,10 @@ pub inline fn ripemd160(data: []const u8, output: *Hash32) void {
 
 /// ModExp (precompile 0x05): (base ^ exp) % modulus. `output` must be modulus.len bytes.
 pub inline fn modexp(
-    base:    []const u8,
-    exp:     []const u8,
+    base: []const u8,
+    exp: []const u8,
     modulus: []const u8,
-    output:  []u8,
+    output: []u8,
 ) bool {
     return impl.modexp(base, exp, modulus, output);
 }
@@ -109,10 +108,10 @@ pub inline fn bn254_pairing(pairs: []const Bn254PairingPair, verified: *bool) bo
 /// BLAKE2f compression (precompile 0x09, EIP-152). `h` updated in place.
 pub inline fn blake2f(
     rounds: u32,
-    h:      *Bytes64,
-    m:      *const Bytes128,
-    t:      *const Bytes16,
-    f:      u8,
+    h: *Bytes64,
+    m: *const Bytes128,
+    t: *const Bytes16,
+    f: u8,
 ) bool {
     return impl.blake2f(rounds, h, m, t, f);
 }
@@ -120,10 +119,10 @@ pub inline fn blake2f(
 /// KZG point evaluation (precompile 0x0a, EIP-4844).
 pub inline fn kzg_point_eval(
     commitment: *const Bytes48,
-    z:          *const Hash32,
-    y:          *const Hash32,
-    proof:      *const Bytes48,
-    verified:   *bool,
+    z: *const Hash32,
+    y: *const Hash32,
+    proof: *const Bytes48,
+    verified: *bool,
 ) bool {
     return impl.kzg_point_eval(commitment, z, y, proof, verified);
 }
@@ -165,9 +164,9 @@ pub inline fn bls12_map_fp2_to_g2(field_element: *const Bytes96, result: *Bytes1
 
 /// secp256r1 (P-256) signature verification (precompile 0x100, EIP-7212).
 pub inline fn secp256r1_verify(
-    msg:      *const Hash32,
-    sig:      *const Bytes64,
-    pubkey:   *const Bytes64,
+    msg: *const Hash32,
+    sig: *const Bytes64,
+    pubkey: *const Bytes64,
     verified: *bool,
 ) void {
     impl.secp256r1_verify(msg, sig, pubkey, verified);

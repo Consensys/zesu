@@ -5,8 +5,8 @@
 
 // Local pair types — same binary layout as accelerators.zig pub pair types.
 const Bn254PairingPair = extern struct { g1: [64]u8, g2: [128]u8 };
-const Bls12G1MsmPair   = extern struct { point: [96]u8,  scalar: [32]u8 };
-const Bls12G2MsmPair   = extern struct { point: [192]u8, scalar: [32]u8 };
+const Bls12G1MsmPair = extern struct { point: [96]u8, scalar: [32]u8 };
+const Bls12G2MsmPair = extern struct { point: [192]u8, scalar: [32]u8 };
 const Bls12PairingPair = extern struct { g1: [96]u8, g2: [192]u8 };
 
 // ── extern fn declarations — resolved by zisk_accel.o at link time ────────────
