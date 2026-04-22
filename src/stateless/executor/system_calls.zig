@@ -88,17 +88,23 @@ fn runSystemCall(
     const saved_fee = ctx.cfg.disable_fee_charge;
     const saved_basefee = ctx.cfg.disable_base_fee;
     const saved_block_gas = ctx.cfg.disable_block_gas_limit;
+    const saved_chain_id_check = ctx.cfg.tx_chain_id_check;
+    const saved_cfg_chain_id = ctx.cfg.chain_id;
     ctx.cfg.disable_nonce_check = true;
     ctx.cfg.disable_balance_check = true;
     ctx.cfg.disable_fee_charge = true;
     ctx.cfg.disable_base_fee = true;
     ctx.cfg.disable_block_gas_limit = true;
+    ctx.cfg.tx_chain_id_check = false;
+    ctx.cfg.chain_id = chain_id;
     defer {
         ctx.cfg.disable_nonce_check = saved_nonce;
         ctx.cfg.disable_balance_check = saved_bal;
         ctx.cfg.disable_fee_charge = saved_fee;
         ctx.cfg.disable_base_fee = saved_basefee;
         ctx.cfg.disable_block_gas_limit = saved_block_gas;
+        ctx.cfg.tx_chain_id_check = saved_chain_id_check;
+        ctx.cfg.chain_id = saved_cfg_chain_id;
     }
 
     // Set up calldata (may be empty for post-block calls).
@@ -246,17 +252,23 @@ fn runSystemCallCapture(
     const saved_fee = ctx.cfg.disable_fee_charge;
     const saved_basefee = ctx.cfg.disable_base_fee;
     const saved_block_gas = ctx.cfg.disable_block_gas_limit;
+    const saved_chain_id_check = ctx.cfg.tx_chain_id_check;
+    const saved_cfg_chain_id = ctx.cfg.chain_id;
     ctx.cfg.disable_nonce_check = true;
     ctx.cfg.disable_balance_check = true;
     ctx.cfg.disable_fee_charge = true;
     ctx.cfg.disable_base_fee = true;
     ctx.cfg.disable_block_gas_limit = true;
+    ctx.cfg.tx_chain_id_check = false;
+    ctx.cfg.chain_id = chain_id;
     defer {
         ctx.cfg.disable_nonce_check = saved_nonce;
         ctx.cfg.disable_balance_check = saved_bal;
         ctx.cfg.disable_fee_charge = saved_fee;
         ctx.cfg.disable_base_fee = saved_basefee;
         ctx.cfg.disable_block_gas_limit = saved_block_gas;
+        ctx.cfg.tx_chain_id_check = saved_chain_id_check;
+        ctx.cfg.chain_id = saved_cfg_chain_id;
     }
 
     var data_list: ?std.ArrayList(u8) = null;
@@ -283,22 +295,46 @@ fn runSystemCallCapture(
     var frames = handler_mod.FrameStack.new();
     const EvmT = handler_mod.EvmFor(@TypeOf(ctx.*).DatabaseType);
     var evm = EvmT.init(ctx, null, instructions, precompiles, &frames);
-    var result = handler_mod.ExecuteEvm.execute(&evm) catch {
+
+    var initial_gas = handler_mod.InitialAndFloorGas{ .initial_gas = 0, .floor_gas = 0 };
+
+    handler_mod.MainnetHandler.validate(&evm, &initial_gas) catch {
         ctx.journaled_state.discardTx();
         if (ctx.tx.data) |*d| d.deinit(alloc_mod.get());
         ctx.tx.data = null;
         return error.SystemContractCallFailed;
     };
 
-    if (result.status != .Success) {
-        result.deinit();
+    handler_mod.MainnetHandler.preExecution(&evm, &initial_gas) catch {
+        ctx.journaled_state.discardTx();
+        if (ctx.tx.data) |*d| d.deinit(alloc_mod.get());
+        ctx.tx.data = null;
+        return error.SystemContractCallFailed;
+    };
+
+    var frame_result = handler_mod.MainnetHandler.executeFrame(&evm, initial_gas) catch {
+        ctx.journaled_state.discardTx();
+        if (ctx.tx.data) |*d| d.deinit(alloc_mod.get());
+        ctx.tx.data = null;
+        return error.SystemContractCallFailed;
+    };
+
+    if (frame_result.result.status != .Success) {
+        frame_result.deinit();
         if (ctx.tx.data) |*d| d.deinit(alloc_mod.get());
         ctx.tx.data = null;
         return error.SystemContractCallFailed;
     }
 
-    const output = if (result.return_data.len > 0) alloc.dupe(u8, result.return_data) catch &.{} else &.{};
-    result.deinit();
+    handler_mod.MainnetHandler.postExecution(&evm, &frame_result, initial_gas) catch {
+        frame_result.deinit();
+        if (ctx.tx.data) |*d| d.deinit(alloc_mod.get());
+        ctx.tx.data = null;
+        return error.SystemContractCallFailed;
+    };
+
+    const output = if (frame_result.result.return_data.len > 0) alloc.dupe(u8, frame_result.result.return_data) catch &.{} else &.{};
+    frame_result.deinit();
 
     if (ctx.tx.data) |*d| d.deinit(alloc_mod.get());
     ctx.tx.data = null;
