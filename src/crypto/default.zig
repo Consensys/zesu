@@ -5,12 +5,12 @@
 const std = @import("std");
 
 const secp256k1_wrapper = @import("backends/secp256k1_wrapper.zig");
-const mcl_wrapper       = @import("backends/mcl_wrapper.zig");
-const blst_wrapper      = @import("backends/blst_wrapper.zig");
-const openssl_wrapper   = @import("backends/openssl_wrapper.zig");
-const blake2f_impl      = @import("backends/blake2f_impl.zig");
-const modexp_impl       = @import("backends/modexp_impl.zig");
-const ripemd160_impl    = @import("backends/ripemd160_impl.zig");
+const mcl_wrapper = @import("backends/mcl_wrapper.zig");
+const blst_wrapper = @import("backends/blst_wrapper.zig");
+const openssl_wrapper = @import("backends/openssl_wrapper.zig");
+const blake2f_impl = @import("backends/blake2f_impl.zig");
+const modexp_impl = @import("backends/modexp_impl.zig");
+const ripemd160_impl = @import("backends/ripemd160_impl.zig");
 
 pub fn keccak256(data: []const u8, output: *[32]u8) void {
     std.crypto.hash.sha3.Keccak256.hash(data, output, .{});

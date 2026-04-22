@@ -58,7 +58,7 @@ fn parseG1Affine(bytes: [96]u8, affine: *c.blst_p1_affine) !bool {
 /// Output: 96-byte unpadded G1 point
 /// Note: EIP-2537 G1Add accepts points not in the prime-order subgroup (only on-curve required)
 pub fn g1Add(a: [96]u8, b: [96]u8) ![96]u8 {
-var p1_affine: c.blst_p1_affine = undefined;
+    var p1_affine: c.blst_p1_affine = undefined;
     var p2_affine: c.blst_p1_affine = undefined;
 
     const a_is_inf = try parseG1Affine(a, &p1_affine);
@@ -108,7 +108,7 @@ pub const PairingPair = struct { g1: [96]u8, g2: [192]u8 };
 /// Note: G1MSM requires points to be in the G1 prime-order subgroup (per EIP-2537)
 ///       Scalars are 32 bytes big-endian (passed directly to pippenger)
 pub fn g1Msm(pairs: []const G1MsmPair) ![96]u8 {
-if (pairs.len == 0) {
+    if (pairs.len == 0) {
         return error.InvalidInput;
     }
 
@@ -210,7 +210,7 @@ fn parseG2Affine(bytes: [192]u8, affine: *c.blst_p2_affine) !bool {
 /// Output: 192-byte unpadded G2 point
 /// Note: EIP-2537 G2Add accepts points not in the prime-order subgroup (only on-curve required)
 pub fn g2Add(a: [192]u8, b: [192]u8) ![192]u8 {
-var p1_affine: c.blst_p2_affine = undefined;
+    var p1_affine: c.blst_p2_affine = undefined;
     var p2_affine: c.blst_p2_affine = undefined;
 
     const a_is_inf = try parseG2Affine(a, &p1_affine);
@@ -261,7 +261,7 @@ var p1_affine: c.blst_p2_affine = undefined;
 /// Note: G2MSM requires points to be in the G2 prime-order subgroup (per EIP-2537)
 ///       Scalars are 32 bytes big-endian (passed directly to pippenger)
 pub fn g2Msm(pairs: []const G2MsmPair) ![192]u8 {
-if (pairs.len == 0) {
+    if (pairs.len == 0) {
         return error.InvalidInput;
     }
 
@@ -337,7 +337,7 @@ if (pairs.len == 0) {
 /// Returns true if pairing product == 1 (identity in GT)
 /// Pairs where G1 or G2 is the point at infinity are skipped (they contribute 1 to product)
 pub fn pairingCheck(pairs: []const PairingPair) !bool {
-if (pairs.len == 0) {
+    if (pairs.len == 0) {
         return true; // Empty pairing is valid (product of no terms = 1)
     }
 
@@ -427,7 +427,7 @@ if (pairs.len == 0) {
 /// Input: 48-byte field element
 /// Output: 96-byte unpadded G1 point
 pub fn mapFpToG1(fp: [48]u8) ![96]u8 {
-// EIP-2537: field element must be canonical (0 <= fp < p)
+    // EIP-2537: field element must be canonical (0 <= fp < p)
     if (!isFpCanonical(&fp)) {
         return error.NonCanonicalFieldElement;
     }
@@ -455,7 +455,7 @@ pub fn mapFpToG1(fp: [48]u8) ![96]u8 {
 /// Input: 96-byte Fp2 element
 /// Output: 192-byte unpadded G2 point
 pub fn mapFp2ToG2(fp2: [96]u8) ![192]u8 {
-// EIP-2537: both Fp2 components must be canonical (0 <= x < p)
+    // EIP-2537: both Fp2 components must be canonical (0 <= x < p)
     if (!isFpCanonical(fp2[0..48]) or !isFpCanonical(fp2[48..96])) {
         return error.NonCanonicalFieldElement;
     }
@@ -504,7 +504,7 @@ const TRUSTED_SETUP_TAU_G2_BYTES: [96]u8 = .{
 /// This requires the Ethereum KZG trusted setup (tau G2 point)
 /// Verifies: e(commitment - [y]G1, -G2) * e(proof, [τ]G2 - [z]G2) == 1
 pub fn verifyKzgProof(commitment: [48]u8, z: [32]u8, y: [32]u8, proof: [48]u8) !bool {
-// Parse commitment as compressed G1 point
+    // Parse commitment as compressed G1 point
     var commitment_affine: c.blst_p1_affine = undefined;
     if (c.blst_p1_uncompress(&commitment_affine, &commitment) != 0) {
         return false; // Invalid G1 point
