@@ -411,6 +411,7 @@ pub fn build(b: *std.Build) void {
         .{ .m = precompile_module, .name = "precompile" },
         .{ .m = interpreter_module, .name = "interpreter" },
         .{ .m = handler_module, .name = "handler" },
+        .{ .m = mpt_module, .name = "mpt" },
     }) |t| {
         const tst = b.addTest(.{ .root_module = t.m });
         _ = t.name;
