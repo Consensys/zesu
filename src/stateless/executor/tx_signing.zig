@@ -12,16 +12,16 @@ const accel = @import("accelerators");
 // ─── RLP helpers (private) ────────────────────────────────────────────────────
 
 fn rlpAccessList(alloc: std.mem.Allocator, al: []const input.AccessListEntry) ![]u8 {
-    var outer_items = std.ArrayListUnmanaged([]const u8){};
+    var outer_items = std.ArrayListUnmanaged([]const u8).empty;
     defer outer_items.deinit(alloc);
 
     for (al) |entry| {
-        var inner_items = std.ArrayListUnmanaged([]const u8){};
+        var inner_items = std.ArrayListUnmanaged([]const u8).empty;
         defer inner_items.deinit(alloc);
 
         try inner_items.append(alloc, try rlp.encodeBytes(alloc, &entry.address));
 
-        var key_items = std.ArrayListUnmanaged([]const u8){};
+        var key_items = std.ArrayListUnmanaged([]const u8).empty;
         defer key_items.deinit(alloc);
         for (entry.storage_keys) |key| {
             try key_items.append(alloc, try rlp.encodeBytes(alloc, &key));
@@ -34,7 +34,7 @@ fn rlpAccessList(alloc: std.mem.Allocator, al: []const input.AccessListEntry) ![
 }
 
 fn rlpBlobVersionedHashes(alloc: std.mem.Allocator, hashes: []const input.Hash) ![]u8 {
-    var items = std.ArrayListUnmanaged([]const u8){};
+    var items = std.ArrayListUnmanaged([]const u8).empty;
     defer items.deinit(alloc);
     for (hashes) |h| try items.append(alloc, try rlp.encodeBytes(alloc, &h));
     return rlp.encodeList(alloc, items.items);
@@ -42,7 +42,7 @@ fn rlpBlobVersionedHashes(alloc: std.mem.Allocator, hashes: []const input.Hash) 
 
 /// Encode EIP-7702 authorization list to RLP (full wire form).
 fn rlpAuthorizationList(alloc: std.mem.Allocator, auth_list: []const input.AuthorizationItem) ![]u8 {
-    var outer = std.ArrayListUnmanaged([]const u8){};
+    var outer = std.ArrayListUnmanaged([]const u8).empty;
     defer outer.deinit(alloc);
     for (auth_list) |item| {
         const items = [_][]const u8{

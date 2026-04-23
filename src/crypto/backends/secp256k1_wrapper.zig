@@ -102,18 +102,13 @@ pub const Secp256k1 = struct {
     }
 };
 
-/// Global secp256k1 context (initialized on first use, thread-safe)
+var global_ctx_done: std.atomic.Value(bool) = .init(false);
 var global_ctx: ?Secp256k1 = null;
-var global_ctx_mutex = std.Thread.Mutex{};
 
-/// Get or create global secp256k1 context
-/// This is thread-safe and reuses a single context for efficiency
 pub fn getContext() ?Secp256k1 {
-    global_ctx_mutex.lock();
-    defer global_ctx_mutex.unlock();
-
-    if (global_ctx == null) {
+    if (!global_ctx_done.load(.acquire)) {
         global_ctx = Secp256k1.init();
+        global_ctx_done.store(true, .release);
     }
     return global_ctx;
 }

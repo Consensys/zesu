@@ -25,19 +25,19 @@ pub fn build(b: *std.Build) void {
             mcl: []const u8,
             linux: bool,
         ) void {
-            step.addIncludePath(.{ .cwd_relative = inc });
-            step.linkSystemLibrary("c");
-            step.linkSystemLibrary("m");
-            step.linkSystemLibrary("secp256k1");
-            step.linkSystemLibrary("ssl");
-            step.linkSystemLibrary("crypto");
-            step.addObjectFile(.{ .cwd_relative = blst });
+            step.root_module.addIncludePath(.{ .cwd_relative = inc });
+            step.root_module.linkSystemLibrary("c", .{});
+            step.root_module.linkSystemLibrary("m", .{});
+            step.root_module.linkSystemLibrary("secp256k1", .{});
+            step.root_module.linkSystemLibrary("ssl", .{});
+            step.root_module.linkSystemLibrary("crypto", .{});
+            step.root_module.addObjectFile(.{ .cwd_relative = blst });
             if (linux) {
-                step.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
-                step.linkSystemLibrary("mcl");
+                step.root_module.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+                step.root_module.linkSystemLibrary("mcl", .{});
             } else {
-                step.addObjectFile(.{ .cwd_relative = mcl });
-                step.linkLibCpp();
+                step.root_module.addObjectFile(.{ .cwd_relative = mcl });
+                step.root_module.link_libcpp = true;
             }
         }
     }.add;
@@ -383,8 +383,7 @@ pub fn build(b: *std.Build) void {
     zkevm_test_exe.root_module.addImport("executor", executor_module);
     addCryptoLibraries(zkevm_test_exe, crypto_include, libblst_path, libmcl_path, is_linux);
     b.installArtifact(zkevm_test_exe);
-    addRunStep(b, "zkevm-tests", "Run zkevm blockchain test fixtures", zkevm_test_exe,
-        &.{ "--fixtures", "spec-tests/fixtures/zkevm/blockchain_tests" });
+    addRunStep(b, "zkevm-tests", "Run zkevm blockchain test fixtures", zkevm_test_exe, &.{ "--fixtures", "spec-tests/fixtures/zkevm/blockchain_tests" });
 
     // ── hive-rlp: Hive consume-rlp execution client ───────────────────────────
 

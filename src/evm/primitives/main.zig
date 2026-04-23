@@ -302,9 +302,7 @@ pub fn specIdToString(spec_id: SpecId) []const u8 {
 }
 
 /// Format SpecId for display.
-pub fn formatSpecId(spec_id: SpecId, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-    _ = fmt;
-    _ = options;
+pub fn formatSpecId(spec_id: SpecId, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll(specIdToString(spec_id));
 }
 

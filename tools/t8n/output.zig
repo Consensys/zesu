@@ -7,6 +7,22 @@
 /// canonical implementations in executor/output.zig; re-exported here.
 const std = @import("std");
 
+/// Minimal anytype-writer wrapper backed by an ArrayListUnmanaged(u8).
+pub const ListWriter = struct {
+    list: *std.ArrayListUnmanaged(u8),
+    alloc: std.mem.Allocator,
+    pub const Error = std.mem.Allocator.Error;
+    pub fn writeAll(self: @This(), bytes: []const u8) Error!void {
+        return self.list.appendSlice(self.alloc, bytes);
+    }
+    pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) Error!void {
+        return self.list.print(self.alloc, fmt, args);
+    }
+    pub fn writeByte(self: @This(), byte: u8) Error!void {
+        return self.list.append(self.alloc, byte);
+    }
+};
+
 const executor = @import("executor");
 const types = executor.executor_types;
 const transition_mod = executor.executor_transition;
@@ -67,13 +83,13 @@ pub fn writeResultJson(
     const receipts_root = try executor_output.computeReceiptsRoot(alloc, result.receipts);
 
     // Collect all fields into a list, then join with commas
-    var fields = std.ArrayListUnmanaged([]const u8){};
+    var fields = std.ArrayListUnmanaged([]const u8).empty;
     defer fields.deinit(alloc);
 
-    var buf = std.ArrayListUnmanaged(u8){};
+    var buf = std.ArrayListUnmanaged(u8).empty;
     defer buf.deinit(alloc);
 
-    const bw = buf.writer(alloc);
+    var bw: ListWriter = .{ .list = &buf, .alloc = alloc };
 
     // stateRoot
     buf.clearRetainingCapacity();

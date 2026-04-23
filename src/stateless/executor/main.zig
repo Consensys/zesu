@@ -119,7 +119,7 @@ fn buildAccessedEntries(
     post_alloc: std.AutoHashMapUnmanaged(types.Address, types.AllocAccount),
     deleted_accounts: []const types.Address,
 ) ![]types.AccessedEntry {
-    var entries = std.ArrayListUnmanaged(types.AccessedEntry){};
+    var entries = std.ArrayListUnmanaged(types.AccessedEntry).empty;
 
     var addr_iter = access_log.accounts.iterator();
     while (addr_iter.next()) |acc_kv| {
@@ -155,8 +155,8 @@ fn buildAccessedEntries(
             break :blk primitives.KECCAK_EMPTY;
         } else if (is_deleted) primitives.KECCAK_EMPTY else pre.code_hash;
 
-        var storage_changes = std.ArrayListUnmanaged(types.StorageChange){};
-        var storage_reads = std.ArrayListUnmanaged(types.Hash){};
+        var storage_changes = std.ArrayListUnmanaged(types.StorageChange).empty;
+        var storage_reads = std.ArrayListUnmanaged(types.Hash).empty;
 
         const witness_storage = access_log.storage.get(address);
         if (witness_storage) |inner| {
@@ -248,7 +248,7 @@ fn buildAccessedEntries(
             std.mem.eql(u8, &post_code_hash, &primitives.KECCAK_EMPTY) and
             p.storage.count() == 0 and !is_deleted) continue;
 
-        var storage_changes2 = std.ArrayListUnmanaged(types.StorageChange){};
+        var storage_changes2 = std.ArrayListUnmanaged(types.StorageChange).empty;
         var post_storage_iter = p.storage.iterator();
         while (post_storage_iter.next()) |slot_kv| {
             const slot_key = slot_kv.key_ptr.*;
@@ -376,7 +376,7 @@ pub fn executeBlockStateless(
     ctx.cfg.chain_id = chain_id;
     ctx.cfg.disable_base_fee = (env.base_fee == null);
 
-    const empty_pre_alloc = std.AutoHashMapUnmanaged(types.Address, types.AllocAccount){};
+    const empty_pre_alloc = std.AutoHashMapUnmanaged(types.Address, types.AllocAccount).empty;
     const result = try transition_mod.transitionWithContext(
         alloc,
         &ctx,
@@ -412,7 +412,7 @@ pub fn executeStatelessInput(
     var node_index = try mpt.buildNodeIndex(alloc, si.witness.nodes);
     defer node_index.deinit();
 
-    var block_hashes = std.ArrayListUnmanaged(BlockHashEntry){};
+    var block_hashes = std.ArrayListUnmanaged(BlockHashEntry).empty;
     for (si.witness.headers) |hdr_rlp| {
         const hash = mpt.keccak256(hdr_rlp);
         const outer = mpt.rlp.decodeItem(hdr_rlp) catch continue;

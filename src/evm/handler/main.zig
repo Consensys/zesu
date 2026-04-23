@@ -59,7 +59,7 @@ pub const ExecutionResult = struct {
             .block_gas_used = gas_used,
             .state_gas_used = 0,
             .gas_refunded = 0,
-            .logs = std.ArrayList(primitives.Log){},
+            .logs = std.ArrayList(primitives.Log).empty,
             .return_data = @constCast(&[_]u8{}),
             .halt_reason = null,
         };

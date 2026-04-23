@@ -34,7 +34,7 @@ test "intrinsic gas: CREATE adds 32000 (pre-Amsterdam)" {
 test "intrinsic gas: zero byte costs 4, nonzero costs 16" {
     var tx = context.TxEnv.default();
     defer tx.deinit();
-    var data = std.ArrayList(u8){};
+    var data = std.ArrayList(u8).empty;
     try data.append(std.heap.c_allocator, 0x00); // 4 gas
     try data.append(std.heap.c_allocator, 0xFF); // 16 gas
     tx.data = data;

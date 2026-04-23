@@ -18,10 +18,9 @@ const InputSource = union(enum) {
     json: struct { block: []const u8, witness: []const u8 }, // --json <b> <w>
 };
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     const allocator = alloc_mod.get();
-
-    const args = try std.process.argsAlloc(allocator);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     // ── Arg parsing ───────────────────────────────────────────────────────────
     var fork_name: ?[]const u8 = null;
@@ -90,15 +89,15 @@ pub fn main() !void {
             std.debug.print("error: failed to parse SSZ from zkvm_io.read_input(): {}\n", .{err});
             std.process.exit(1);
         },
-        .rlp_file => |path| io.fromRlpFile(allocator, path) catch |err| {
+        .rlp_file => |path| io.fromRlpFile(init.io, allocator, path) catch |err| {
             std.debug.print("error: failed to parse RLP from '{s}': {}\n", .{ path, err });
             std.process.exit(1);
         },
-        .ssz_file => |path| io.fromSszFile(allocator, path) catch |err| {
+        .ssz_file => |path| io.fromSszFile(init.io, allocator, path) catch |err| {
             std.debug.print("error: failed to parse SSZ from '{s}': {}\n", .{ path, err });
             std.process.exit(1);
         },
-        .json => |p| loadFromJson(allocator, p.block, p.witness) catch |err| {
+        .json => |p| loadFromJson(init.io, allocator, p.block, p.witness) catch |err| {
             std.debug.print("error: failed to load JSON input: {}\n", .{err});
             std.process.exit(1);
         },
@@ -122,7 +121,7 @@ pub fn main() !void {
     defer node_index.deinit();
 
     // Decode block-hash table from witness headers.
-    var block_hashes = std.ArrayListUnmanaged(executor.BlockHashEntry){};
+    var block_hashes = std.ArrayListUnmanaged(executor.BlockHashEntry).empty;
     for (si.witness.headers) |hdr_rlp| {
         const hash = mpt.keccak256(hdr_rlp);
         const outer = mpt.rlp.decodeItem(hdr_rlp) catch continue;
@@ -232,13 +231,13 @@ pub fn main() !void {
     std.debug.print("\nOK\n", .{});
 }
 
-fn loadFromJson(allocator: std.mem.Allocator, block_path: []const u8, witness_path: []const u8) !input.StatelessInput {
-    const block_json = std.fs.cwd().readFileAlloc(allocator, block_path, 1 << 20) catch |err| {
+fn loadFromJson(my_io: std.Io, allocator: std.mem.Allocator, block_path: []const u8, witness_path: []const u8) !input.StatelessInput {
+    const block_json = std.Io.Dir.cwd().readFileAlloc(my_io, block_path, allocator, .limited(1 << 20)) catch |err| {
         std.debug.print("error: cannot read {s}: {}\n", .{ block_path, err });
         return err;
     };
 
-    const witness_json = std.fs.cwd().readFileAlloc(allocator, witness_path, 64 << 20) catch |err| {
+    const witness_json = std.Io.Dir.cwd().readFileAlloc(my_io, witness_path, allocator, .limited(64 << 20)) catch |err| {
         std.debug.print("error: cannot read {s}: {}\n", .{ witness_path, err });
         return err;
     };

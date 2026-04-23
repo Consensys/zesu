@@ -75,7 +75,7 @@ test "BLS12-381 G1 Add - Besu EIP-2537 vectors" {
     var line_iter = std.mem.splitScalar(u8, g1_add_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue;
 
@@ -119,7 +119,7 @@ test "BLS12-381 G2 Add - Besu EIP-2537 vectors" {
     var line_iter = std.mem.splitScalar(u8, g2_add_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue;
 
@@ -163,7 +163,7 @@ test "BLS12-381 G1 MSM - Besu EIP-2537 vectors" {
     var line_iter = std.mem.splitScalar(u8, g1_msm_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue;
 
@@ -203,7 +203,7 @@ test "BLS12-381 G2 MSM - Besu EIP-2537 vectors" {
     var line_iter = std.mem.splitScalar(u8, g2_msm_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue;
 
@@ -245,7 +245,7 @@ test "BLS12-381 Pairing - Besu EIP-2537 vectors" {
         var line_iter = std.mem.splitScalar(u8, csv, '\n');
         var row: usize = 0;
         while (line_iter.next()) |raw_line| {
-            const line = std.mem.trimRight(u8, raw_line, "\r");
+            const line = std.mem.trimEnd(u8, raw_line, "\r");
             row += 1;
             if (row == 1 or line.len == 0) continue;
 
@@ -291,7 +291,7 @@ test "BLS12-381 MapFpToG1 - Besu EIP-2537 vectors" {
     var line_iter = std.mem.splitScalar(u8, fp_to_g1_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue;
 
@@ -335,7 +335,7 @@ test "BLS12-381 MapFp2ToG2 - Besu EIP-2537 vectors" {
     var line_iter = std.mem.splitScalar(u8, fp2_to_g2_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue;
 

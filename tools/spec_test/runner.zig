@@ -211,7 +211,7 @@ fn buildTx(
     };
     if (al_json_val) |alv| {
         if (alv == .array) {
-            var al = std.ArrayListUnmanaged(input_mod.AccessListEntry){};
+            var al = std.ArrayListUnmanaged(input_mod.AccessListEntry).empty;
             for (alv.array.items) |al_item| {
                 if (al_item != .object) continue;
                 const alo = al_item.object;
@@ -220,7 +220,7 @@ fn buildTx(
                 else
                     [_]u8{0} ** 20;
 
-                var keys = std.ArrayListUnmanaged(input_mod.Hash){};
+                var keys = std.ArrayListUnmanaged(input_mod.Hash).empty;
                 if (alo.get("storageKeys")) |skv| {
                     if (skv == .array) {
                         for (skv.array.items) |sk_item| {
@@ -242,7 +242,7 @@ fn buildTx(
     // EIP-4844: blob versioned hashes and max fee per blob gas
     if (txn.get("blobVersionedHashes")) |bvhv| {
         if (bvhv == .array) {
-            var hashes = std.ArrayListUnmanaged(input_mod.Hash){};
+            var hashes = std.ArrayListUnmanaged(input_mod.Hash).empty;
             for (bvhv.array.items) |h_item| {
                 if (jStr(h_item)) |s| {
                     try hashes.append(alloc, hexToHash(s) catch [_]u8{0} ** 32);
@@ -258,7 +258,7 @@ fn buildTx(
     if (txn.get("authorizationList")) |alv| {
         if (alv == .array) {
             has_authorization_list_field = true;
-            var auth_items = std.ArrayListUnmanaged(input_mod.AuthorizationItem){};
+            var auth_items = std.ArrayListUnmanaged(input_mod.AuthorizationItem).empty;
             for (alv.array.items) |item| {
                 if (item != .object) continue;
                 const obj = item.object;
@@ -582,7 +582,7 @@ fn cloneAllocMap(
     alloc: std.mem.Allocator,
     src: std.AutoHashMapUnmanaged(input_mod.Address, input_mod.AllocAccount),
 ) !std.AutoHashMapUnmanaged(input_mod.Address, input_mod.AllocAccount) {
-    var dst = std.AutoHashMapUnmanaged(input_mod.Address, input_mod.AllocAccount){};
+    var dst = std.AutoHashMapUnmanaged(input_mod.Address, input_mod.AllocAccount).empty;
     var it = src.iterator();
     while (it.next()) |entry| {
         var acct = input_mod.AllocAccount{

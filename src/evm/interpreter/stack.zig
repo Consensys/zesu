@@ -208,16 +208,13 @@ pub const Stack = struct {
     }
 
     /// Format the stack for debugging
-    pub fn format(self: *const Stack, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = fmt;
-        _ = options;
-
+    pub fn format(self: *const Stack, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeAll("[");
         for (self.data[0..self.length], 0..) |item, i| {
             if (i > 0) {
                 try writer.writeAll(", ");
             }
-            try std.fmt.format(writer, "{}", .{item});
+            try writer.print("{}", .{item});
         }
         try writer.writeAll("]");
     }

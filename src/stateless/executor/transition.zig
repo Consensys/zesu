@@ -84,13 +84,13 @@ const BaTracker = struct {
     fn initFromPreAlloc(a: std.mem.Allocator, pre: std.AutoHashMapUnmanaged(input.Address, input.AllocAccount)) BaTracker {
         var self = BaTracker{
             .alloc = a,
-            .committed = .{},
-            .committed_storage = .{},
-            .bal_chg = .{},
-            .nonce_chg = .{},
-            .code_chg = .{},
-            .slot_chg = .{},
-            .selfdestruct_reads = .{},
+            .committed = .empty,
+            .committed_storage = .empty,
+            .bal_chg = .empty,
+            .nonce_chg = .empty,
+            .code_chg = .empty,
+            .slot_chg = .empty,
+            .selfdestruct_reads = .empty,
         };
         var it = pre.iterator();
         while (it.next()) |e| {
@@ -103,7 +103,7 @@ const BaTracker = struct {
                 .code_hash = code_hash,
             }) catch {};
             if (acct.storage.count() > 0) {
-                var sm = std.AutoHashMapUnmanaged(u256, u256){};
+                var sm = std.AutoHashMapUnmanaged(u256, u256).empty;
                 var sit = acct.storage.iterator();
                 while (sit.next()) |se| {
                     if (se.value_ptr.* != 0) sm.put(a, se.key_ptr.*, se.value_ptr.*) catch {};
@@ -151,7 +151,7 @@ const BaTracker = struct {
                 // may receive ETH after their SELFDESTRUCT (e.g. as a selfdestruct target),
                 // but that ETH is immediately burned — don't record it as a balance change.
                 if (known.balance != 0 and acct.info.balance != known.balance) {
-                    const entry = self.bal_chg.getOrPutValue(a, addr, .{}) catch {
+                    const entry = self.bal_chg.getOrPutValue(a, addr, .empty) catch {
                         continue;
                     };
                     entry.value_ptr.*.append(a, bal_mod.BaiU256{ .bai = bai, .value = acct.info.balance }) catch {};
@@ -175,13 +175,13 @@ const BaTracker = struct {
 
             // Balance
             if (acct.info.balance != known.balance) {
-                const entry = self.bal_chg.getOrPutValue(a, addr, .{}) catch continue;
+                const entry = self.bal_chg.getOrPutValue(a, addr, .empty) catch continue;
                 entry.value_ptr.*.append(a, bal_mod.BaiU256{ .bai = bai, .value = acct.info.balance }) catch {};
             }
 
             // Nonce
             if (acct.info.nonce != known.nonce) {
-                const entry = self.nonce_chg.getOrPutValue(a, addr, .{}) catch continue;
+                const entry = self.nonce_chg.getOrPutValue(a, addr, .empty) catch continue;
                 entry.value_ptr.*.append(a, bal_mod.BaiU64{ .bai = bai, .value = acct.info.nonce }) catch {};
             }
 
@@ -212,7 +212,7 @@ const BaTracker = struct {
                         break :blk db_bc.originalBytes();
                     } else |_| break :blk &.{};
                 };
-                const entry = self.code_chg.getOrPutValue(a, addr, .{}) catch continue;
+                const entry = self.code_chg.getOrPutValue(a, addr, .empty) catch continue;
                 entry.value_ptr.*.append(a, bal_mod.BaiCode{ .bai = bai, .code = code_bytes }) catch {};
             }
 
@@ -238,7 +238,7 @@ const BaTracker = struct {
                 if (present == committed_val) continue;
                 const addr_map = self.slot_chg.getOrPut(a, addr) catch continue;
                 if (!addr_map.found_existing) addr_map.value_ptr.* = .{};
-                const slot_list = addr_map.value_ptr.*.getOrPutValue(a, slot, .{}) catch continue;
+                const slot_list = addr_map.value_ptr.*.getOrPutValue(a, slot, .empty) catch continue;
                 slot_list.value_ptr.*.append(a, bal_mod.SlotBaiValue{ .bai = bai, .value = present }) catch {};
             }
         }
@@ -311,7 +311,7 @@ const BaTracker = struct {
         }
 
         // Collect all addresses that were accessed during block execution.
-        var all_addrs = std.AutoHashMapUnmanaged(input.Address, void){};
+        var all_addrs = std.AutoHashMapUnmanaged(input.Address, void).empty;
         {
             var it = ctx.journaled_state.inner.evm_state.iterator();
             while (it.next()) |e| {
@@ -348,7 +348,7 @@ const BaTracker = struct {
             while (it.next()) |k| all_addrs.put(a, k.*, {}) catch {};
         }
 
-        var entries = std.ArrayListUnmanaged(bal_mod.EncodeEntry){};
+        var entries = std.ArrayListUnmanaged(bal_mod.EncodeEntry).empty;
 
         var addr_it = all_addrs.keyIterator();
         while (addr_it.next()) |addr_ptr| {
@@ -367,7 +367,7 @@ const BaTracker = struct {
             }
 
             // Build storage_changes sorted by slot
-            var sc_list = std.ArrayListUnmanaged(bal_mod.EncodeSlotChange){};
+            var sc_list = std.ArrayListUnmanaged(bal_mod.EncodeSlotChange).empty;
             if (self.slot_chg.get(addr)) |slot_map| {
                 var sit = slot_map.iterator();
                 while (sit.next()) |se| {
@@ -384,7 +384,7 @@ const BaTracker = struct {
             }
 
             // Build storage_reads (not-changed slots), sorted, excluding those in slot_chg
-            var sr_list = std.ArrayListUnmanaged(u256){};
+            var sr_list = std.ArrayListUnmanaged(u256).empty;
             if (storage_reads.get(addr)) |sr_map| {
                 var sit = sr_map.keyIterator();
                 while (sit.next()) |slot_ptr| {
@@ -430,7 +430,7 @@ const BaTracker = struct {
         var bal_items: u64 = 0;
         for (entries.items) |entry| {
             bal_items += 1; // address
-            var unique_slots = std.AutoHashMapUnmanaged(u256, void){};
+            var unique_slots = std.AutoHashMapUnmanaged(u256, void).empty;
             for (entry.storage_changes) |sc| unique_slots.put(a, sc.slot, {}) catch {};
             for (entry.storage_reads) |sr| unique_slots.put(a, sr, {}) catch {};
             bal_items += unique_slots.count();
@@ -604,8 +604,8 @@ pub fn transitionWithContext(
 
     if (tracker) |*t| t.detectAndRecord(0, ctx);
 
-    var receipts = std.ArrayListUnmanaged(Receipt){};
-    var accepted_txs = std.ArrayListUnmanaged(input.TxInput){};
+    var receipts = std.ArrayListUnmanaged(Receipt).empty;
+    var accepted_txs = std.ArrayListUnmanaged(input.TxInput).empty;
     var cumulative_gas: u64 = 0; // block gas (max(regular, state) per tx, for block header gasUsed)
     var cumulative_receipt_gas: u64 = 0; // receipt gas (regular + state per tx, for cumulativeGasUsed)
     var block_bloom = bloom.ZERO;
@@ -731,7 +731,7 @@ pub fn transitionWithContext(
         if (tx.type == 3) {
             // Always create a blob_hashes list for type-3 txs (even if empty), so that
             // validateBlobTx sees an empty list and rejects it with EmptyBlobList.
-            var blob_list = std.ArrayList(primitives.Hash){};
+            var blob_list = std.ArrayList(primitives.Hash).empty;
             blob_list.appendSlice(alloc_mod.get(), tx.blob_versioned_hashes) catch {};
             ctx.tx.blob_hashes = blob_list;
             ctx.tx.max_fee_per_blob_gas = tx.max_fee_per_blob_gas orelse 0;
@@ -743,7 +743,7 @@ pub fn transitionWithContext(
         // EIP-7702: authorization list for type 4 transactions
         if (ctx.tx.authorization_list) |*old_al| old_al.deinit(alloc_mod.get());
         if (tx.type == 4 and tx.authorization_list.len > 0) {
-            var auth_list = std.ArrayList(context_mod.Either){};
+            var auth_list = std.ArrayList(context_mod.Either).empty;
             for (tx.authorization_list) |ai| {
                 const authority: context_mod.RecoveredAuthority = blk: {
                     if (ai.signer) |s| break :blk context_mod.RecoveredAuthority{ .Valid = s };
@@ -800,7 +800,7 @@ pub fn transitionWithContext(
         // Calldata
         ctx.tx.data = null;
         if (tx.data.len > 0) {
-            var data_list = std.ArrayList(u8){};
+            var data_list = std.ArrayList(u8).empty;
             data_list.appendSlice(alloc_mod.get(), tx.data) catch {
                 if (ctx.tx.blob_hashes) |*bh| bh.deinit(alloc_mod.get());
                 ctx.tx.blob_hashes = null;
@@ -813,11 +813,11 @@ pub fn transitionWithContext(
 
         // Access list
         if (tx.access_list.len > 0) {
-            var al_items = std.ArrayList(context_mod.AccessListItem){};
+            var al_items = std.ArrayList(context_mod.AccessListItem).empty;
             for (tx.access_list) |al_entry| {
                 var item = context_mod.AccessListItem{
                     .address = al_entry.address,
-                    .storage_keys = std.ArrayList(primitives.StorageKey){},
+                    .storage_keys = std.ArrayList(primitives.StorageKey).empty,
                 };
                 for (al_entry.storage_keys) |key| {
                     const sk = std.mem.readInt(u256, &key, .big);
@@ -1062,7 +1062,7 @@ pub fn transitionWithContext(
             null;
 
         const logs_start = log_index_global;
-        var receipt_logs = std.ArrayListUnmanaged(Log){};
+        var receipt_logs = std.ArrayListUnmanaged(Log).empty;
         var receipt_bloom = bloom.ZERO;
 
         for (exec_result.logs.items) |log| {
@@ -1165,7 +1165,7 @@ pub fn transitionWithContext(
     const post_alloc = try extractPostState(arena, pre_alloc_in, ctx);
 
     // Collect selfdestructed accounts for delta-root deletion
-    var deleted = std.ArrayListUnmanaged(input.Address){};
+    var deleted = std.ArrayListUnmanaged(input.Address).empty;
     {
         var del_it = ctx.journaled_state.inner.evm_state.iterator();
         while (del_it.next()) |e| {
@@ -1232,7 +1232,7 @@ fn depositFromLog(log: *const input.Log, out: *[192]u8) error{InvalidDepositEven
 /// Only processes logs from the deposit contract that have the DepositEvent topic.
 /// Returns error.InvalidDepositEventLayout if such a log has the wrong data length.
 fn collectDeposits(arena: std.mem.Allocator, receipts: []const Receipt) error{InvalidDepositEventLayout}![]const u8 {
-    var buf = std.ArrayListUnmanaged(u8){};
+    var buf = std.ArrayListUnmanaged(u8).empty;
     for (receipts) |*receipt| {
         for (receipt.logs) |*log| {
             if (!std.mem.eql(u8, &log.address, &DEPOSIT_CONTRACT_ADDRESS)) continue;
@@ -1284,7 +1284,7 @@ fn extractPostState(
     ctx: anytype,
 ) !std.AutoHashMapUnmanaged(input.Address, input.AllocAccount) {
     // Start with a mutable copy of pre_alloc (use arena allocation for storage maps)
-    var post = std.AutoHashMapUnmanaged(input.Address, input.AllocAccount){};
+    var post = std.AutoHashMapUnmanaged(input.Address, input.AllocAccount).empty;
 
     // Clone all pre-state accounts
     var pre_it = pre_alloc.iterator();

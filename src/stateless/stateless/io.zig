@@ -16,8 +16,8 @@ pub fn fromRlpStream(allocator: std.mem.Allocator) !input_mod.StatelessInput {
 }
 
 /// RLP from a binary file — testing convenience.
-pub fn fromRlpFile(allocator: std.mem.Allocator, path: []const u8) !input_mod.StatelessInput {
-    const data = try std.fs.cwd().readFileAlloc(allocator, path, 256 << 20);
+pub fn fromRlpFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !input_mod.StatelessInput {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(256 << 20));
     return rlp.decode(allocator, data);
 }
 
@@ -31,7 +31,7 @@ pub fn fromSszStream(allocator: std.mem.Allocator) !input_mod.StatelessInput {
 }
 
 /// SSZ from a binary file.
-pub fn fromSszFile(allocator: std.mem.Allocator, path: []const u8) !input_mod.StatelessInput {
-    const data = try std.fs.cwd().readFileAlloc(allocator, path, 1 << 30);
+pub fn fromSszFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !input_mod.StatelessInput {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1 << 30));
     return ssz.decode(allocator, data);
 }
