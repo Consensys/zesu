@@ -772,6 +772,25 @@ fn updNodeExIndexed(
             for (b.children, 0..) |child, i| {
                 if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
             }
+
+            // Collapse branch if deletion leaves only one non-empty child with no value.
+            // Canonical MPT requires replacing such a branch with an extension or leaf.
+            if (new_val == null and b.value.len == 0) {
+                var sole: i32 = -1;
+                for (enc, 0..) |ce, i| {
+                    const empty = ce.len == 1 and ce[0] == 0x80;
+                    if (!empty) {
+                        if (sole >= 0) {
+                            sole = -2;
+                            break;
+                        }
+                        sole = @intCast(i);
+                    }
+                }
+                if (sole >= 0) return collapseIndexed(alloc, @intCast(sole), enc[@intCast(sole)], index);
+                if (sole == -1) return alloc.dupe(u8, &.{0x80}); // all children empty
+            }
+
             return updEncodeBranch(alloc, &enc, b.value);
         },
 
@@ -787,10 +806,43 @@ fn updNodeExIndexed(
                 const new_child_rlp = try updNodeExIndexed(alloc, child_rlp, remaining[cp..], new_val, index);
                 if (new_child_rlp.len == 1 and new_child_rlp[0] == 0x80)
                     return alloc.dupe(u8, &.{0x80});
+
+                // When a deletion collapses a descendant branch into a short node,
+                // merge the extension path with the child's path (canonical form).
+                if (new_val == null) {
+                    const cd = node.decodeNode(new_child_rlp) catch null;
+                    if (cd) |decoded_child| {
+                        var cpb: [128]u8 = undefined;
+                        var merged: [64]u8 = undefined;
+                        @memcpy(merged[0..prefix.len], prefix);
+                        switch (decoded_child) {
+                            .leaf => |lf| {
+                                const chp = nibbles.hpDecode(lf.key_end, &cpb) catch return error.InvalidHp;
+                                @memcpy(merged[prefix.len .. prefix.len + chp.len], cpb[0..chp.len]);
+                                return updMakeLeaf(alloc, merged[0 .. prefix.len + chp.len], lf.value);
+                            },
+                            .extension => |ee| {
+                                const chp = nibbles.hpDecode(ee.prefix, &cpb) catch return error.InvalidHp;
+                                @memcpy(merged[prefix.len .. prefix.len + chp.len], cpb[0..chp.len]);
+                                const child_ref = try updRefEnc(alloc, ee.child);
+                                return updMakeExtension(alloc, merged[0 .. prefix.len + chp.len], child_ref);
+                            },
+                            .branch => {},
+                        }
+                    }
+                }
+
                 const new_child_ref = try updHashOrEmbedExIndexed(alloc, new_child_rlp, index);
                 return updMakeExtension(alloc, prefix, new_child_ref);
             }
 
+            // Key diverges from extension prefix → key doesn't exist → return unchanged.
+            if (new_val == null) {
+                const child_ref = try updRefEnc(alloc, e.child);
+                return updMakeExtension(alloc, prefix, child_ref);
+            }
+
+            // Partial prefix match: split extension at position `cp`
             var children_enc: [16][]const u8 = undefined;
             for (&children_enc) |*enc| enc.* = try alloc.dupe(u8, &.{0x80});
             var branch_val: []const u8 = &.{};
@@ -895,6 +947,24 @@ fn updNode(
             for (b.children, 0..) |child, i| {
                 if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
             }
+
+            // Collapse branch if deletion leaves only one non-empty child with no value.
+            if (new_val == null and b.value.len == 0) {
+                var sole: i32 = -1;
+                for (enc, 0..) |ce, i| {
+                    const empty = ce.len == 1 and ce[0] == 0x80;
+                    if (!empty) {
+                        if (sole >= 0) {
+                            sole = -2;
+                            break;
+                        }
+                        sole = @intCast(i);
+                    }
+                }
+                if (sole >= 0) return collapseNode(alloc, @intCast(sole), enc[@intCast(sole)], pool);
+                if (sole == -1) return alloc.dupe(u8, &.{0x80});
+            }
+
             return updEncodeBranch(alloc, &enc, b.value);
         },
 
@@ -911,8 +981,39 @@ fn updNode(
                 const new_child_rlp = try updNode(alloc, child_rlp, remaining[cp..], new_val, pool);
                 if (new_child_rlp.len == 1 and new_child_rlp[0] == 0x80)
                     return alloc.dupe(u8, &.{0x80});
+
+                // Merge extension path with a collapsed child (canonical form).
+                if (new_val == null) {
+                    const cd = node.decodeNode(new_child_rlp) catch null;
+                    if (cd) |decoded_child| {
+                        var cpb: [128]u8 = undefined;
+                        var merged: [64]u8 = undefined;
+                        @memcpy(merged[0..prefix.len], prefix);
+                        switch (decoded_child) {
+                            .leaf => |lf| {
+                                const chp = nibbles.hpDecode(lf.key_end, &cpb) catch return error.InvalidHp;
+                                @memcpy(merged[prefix.len .. prefix.len + chp.len], cpb[0..chp.len]);
+                                return updMakeLeaf(alloc, merged[0 .. prefix.len + chp.len], lf.value);
+                            },
+                            .extension => |ee| {
+                                const chp = nibbles.hpDecode(ee.prefix, &cpb) catch return error.InvalidHp;
+                                @memcpy(merged[prefix.len .. prefix.len + chp.len], cpb[0..chp.len]);
+                                const child_ref = try updRefEnc(alloc, ee.child);
+                                return updMakeExtension(alloc, merged[0 .. prefix.len + chp.len], child_ref);
+                            },
+                            .branch => {},
+                        }
+                    }
+                }
+
                 const new_child_ref = try updHashOrEmbed(alloc, new_child_rlp);
                 return updMakeExtension(alloc, prefix, new_child_ref);
+            }
+
+            // Key diverges from extension prefix → key doesn't exist → return unchanged.
+            if (new_val == null) {
+                const child_ref = try updRefEnc(alloc, e.child);
+                return updMakeExtension(alloc, prefix, child_ref);
             }
 
             // Partial prefix match: split extension at position `cp`
@@ -1023,6 +1124,24 @@ fn updNodeEx(
             for (b.children, 0..) |child, i| {
                 if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
             }
+
+            // Collapse branch if deletion leaves only one non-empty child with no value.
+            if (new_val == null and b.value.len == 0) {
+                var sole: i32 = -1;
+                for (enc, 0..) |ce, i| {
+                    const empty = ce.len == 1 and ce[0] == 0x80;
+                    if (!empty) {
+                        if (sole >= 0) {
+                            sole = -2;
+                            break;
+                        }
+                        sole = @intCast(i);
+                    }
+                }
+                if (sole >= 0) return collapseNodeEx(alloc, @intCast(sole), enc[@intCast(sole)], pool, extra);
+                if (sole == -1) return alloc.dupe(u8, &.{0x80});
+            }
+
             return updEncodeBranch(alloc, &enc, b.value);
         },
 
@@ -1038,8 +1157,39 @@ fn updNodeEx(
                 const new_child_rlp = try updNodeEx(alloc, child_rlp, remaining[cp..], new_val, pool, extra);
                 if (new_child_rlp.len == 1 and new_child_rlp[0] == 0x80)
                     return alloc.dupe(u8, &.{0x80});
+
+                // Merge extension path with a collapsed child (canonical form).
+                if (new_val == null) {
+                    const cd = node.decodeNode(new_child_rlp) catch null;
+                    if (cd) |decoded_child| {
+                        var cpb: [128]u8 = undefined;
+                        var merged: [64]u8 = undefined;
+                        @memcpy(merged[0..prefix.len], prefix);
+                        switch (decoded_child) {
+                            .leaf => |lf| {
+                                const chp = nibbles.hpDecode(lf.key_end, &cpb) catch return error.InvalidHp;
+                                @memcpy(merged[prefix.len .. prefix.len + chp.len], cpb[0..chp.len]);
+                                return updMakeLeaf(alloc, merged[0 .. prefix.len + chp.len], lf.value);
+                            },
+                            .extension => |ee| {
+                                const chp = nibbles.hpDecode(ee.prefix, &cpb) catch return error.InvalidHp;
+                                @memcpy(merged[prefix.len .. prefix.len + chp.len], cpb[0..chp.len]);
+                                const child_ref = try updRefEnc(alloc, ee.child);
+                                return updMakeExtension(alloc, merged[0 .. prefix.len + chp.len], child_ref);
+                            },
+                            .branch => {},
+                        }
+                    }
+                }
+
                 const new_child_ref = try updHashOrEmbedEx(alloc, new_child_rlp, extra);
                 return updMakeExtension(alloc, prefix, new_child_ref);
+            }
+
+            // Key diverges from extension prefix → key doesn't exist → return unchanged.
+            if (new_val == null) {
+                const child_ref = try updRefEnc(alloc, e.child);
+                return updMakeExtension(alloc, prefix, child_ref);
             }
 
             var children_enc: [16][]const u8 = undefined;
@@ -1136,6 +1286,147 @@ fn updRefEnc(alloc: std.mem.Allocator, ref: node.NodeRef) ![]const u8 {
     };
 }
 
+/// Collapse a branch's sole remaining child into the canonical short-node form.
+///
+/// After a deletion leaves a branch with exactly one non-empty child (no value),
+/// Ethereum's MPT requires replacing the branch with either a leaf or extension
+/// whose path has the child's nibble prepended. This mirrors go-ethereum's
+/// "fold back into a short node" logic.
+///
+/// `child_enc` is the parent-encoded reference already in `enc[sole_nib]`:
+///   - hash ref: 33 bytes, child_enc[0] == 0xa0
+///   - inline node: raw RLP bytes (< 32 bytes)
+fn collapseIndexed(
+    alloc: std.mem.Allocator,
+    sole_nib: u8,
+    child_enc: []const u8,
+    index: *NodeIndex,
+) (MptError || error{OutOfMemory})![]const u8 {
+    // Resolve the child's actual RLP bytes.
+    const child_bytes: []const u8 = blk: {
+        if (child_enc.len == 33 and child_enc[0] == 0xa0) {
+            var h: [32]u8 = undefined;
+            @memcpy(&h, child_enc[1..33]);
+            break :blk findNodeInIndex(index, h) orelse return error.InvalidProof;
+        }
+        break :blk child_enc;
+    };
+
+    const decoded = node.decodeNode(child_bytes) catch |err| switch (err) {
+        error.InvalidRlp => return error.InvalidRlp,
+        error.InvalidNode => return error.InvalidNode,
+    };
+
+    var path_buf: [128]u8 = undefined;
+    var merged: [64]u8 = undefined;
+    merged[0] = sole_nib;
+
+    switch (decoded) {
+        .leaf => |lf| {
+            const hp = nibbles.hpDecode(lf.key_end, &path_buf) catch return error.InvalidHp;
+            @memcpy(merged[1 .. 1 + hp.len], path_buf[0..hp.len]);
+            return updMakeLeaf(alloc, merged[0 .. 1 + hp.len], lf.value);
+        },
+        .extension => |e| {
+            const hp = nibbles.hpDecode(e.prefix, &path_buf) catch return error.InvalidHp;
+            @memcpy(merged[1 .. 1 + hp.len], path_buf[0..hp.len]);
+            const child_ref = try updRefEnc(alloc, e.child);
+            return updMakeExtension(alloc, merged[0 .. 1 + hp.len], child_ref);
+        },
+        .branch => {
+            // Child is itself a branch: 1-nibble extension pointing to it.
+            return updMakeExtension(alloc, merged[0..1], child_enc);
+        },
+    }
+}
+
+/// Like collapseIndexed but resolves child bytes from the witness pool.
+fn collapseNode(
+    alloc: std.mem.Allocator,
+    sole_nib: u8,
+    child_enc: []const u8,
+    pool: []const []const u8,
+) (MptError || error{OutOfMemory})![]const u8 {
+    const child_bytes: []const u8 = blk: {
+        if (child_enc.len == 33 and child_enc[0] == 0xa0) {
+            var h: [32]u8 = undefined;
+            @memcpy(&h, child_enc[1..33]);
+            break :blk findNode(pool, h) orelse return error.InvalidProof;
+        }
+        break :blk child_enc;
+    };
+
+    const decoded = node.decodeNode(child_bytes) catch |err| switch (err) {
+        error.InvalidRlp => return error.InvalidRlp,
+        error.InvalidNode => return error.InvalidNode,
+    };
+
+    var path_buf: [128]u8 = undefined;
+    var merged: [64]u8 = undefined;
+    merged[0] = sole_nib;
+
+    switch (decoded) {
+        .leaf => |lf| {
+            const hp = nibbles.hpDecode(lf.key_end, &path_buf) catch return error.InvalidHp;
+            @memcpy(merged[1 .. 1 + hp.len], path_buf[0..hp.len]);
+            return updMakeLeaf(alloc, merged[0 .. 1 + hp.len], lf.value);
+        },
+        .extension => |e| {
+            const hp = nibbles.hpDecode(e.prefix, &path_buf) catch return error.InvalidHp;
+            @memcpy(merged[1 .. 1 + hp.len], path_buf[0..hp.len]);
+            const child_ref = try updRefEnc(alloc, e.child);
+            return updMakeExtension(alloc, merged[0 .. 1 + hp.len], child_ref);
+        },
+        .branch => {
+            return updMakeExtension(alloc, merged[0..1], child_enc);
+        },
+    }
+}
+
+/// Like collapseIndexed but resolves child bytes from the combined pool+extra.
+fn collapseNodeEx(
+    alloc: std.mem.Allocator,
+    sole_nib: u8,
+    child_enc: []const u8,
+    pool: []const []const u8,
+    extra: *std.ArrayListUnmanaged([]const u8),
+) (MptError || error{OutOfMemory})![]const u8 {
+    const child_bytes: []const u8 = blk: {
+        if (child_enc.len == 33 and child_enc[0] == 0xa0) {
+            var h: [32]u8 = undefined;
+            @memcpy(&h, child_enc[1..33]);
+            break :blk findNode(pool, h) orelse findNode(extra.items, h) orelse return error.InvalidProof;
+        }
+        break :blk child_enc;
+    };
+
+    const decoded = node.decodeNode(child_bytes) catch |err| switch (err) {
+        error.InvalidRlp => return error.InvalidRlp,
+        error.InvalidNode => return error.InvalidNode,
+    };
+
+    var path_buf: [128]u8 = undefined;
+    var merged: [64]u8 = undefined;
+    merged[0] = sole_nib;
+
+    switch (decoded) {
+        .leaf => |lf| {
+            const hp = nibbles.hpDecode(lf.key_end, &path_buf) catch return error.InvalidHp;
+            @memcpy(merged[1 .. 1 + hp.len], path_buf[0..hp.len]);
+            return updMakeLeaf(alloc, merged[0 .. 1 + hp.len], lf.value);
+        },
+        .extension => |e| {
+            const hp = nibbles.hpDecode(e.prefix, &path_buf) catch return error.InvalidHp;
+            @memcpy(merged[1 .. 1 + hp.len], path_buf[0..hp.len]);
+            const child_ref = try updRefEnc(alloc, e.child);
+            return updMakeExtension(alloc, merged[0 .. 1 + hp.len], child_ref);
+        },
+        .branch => {
+            return updMakeExtension(alloc, merged[0..1], child_enc);
+        },
+    }
+}
+
 /// Compute the parent-node reference encoding for a child node.
 /// If the child RLP is < 32 bytes: embed inline (return as-is).
 /// If >= 32 bytes: return RLP-encoded keccak256 hash.
@@ -1219,6 +1510,166 @@ fn updRlpBytes(alloc: std.mem.Allocator, data: []const u8) ![]u8 {
     @memcpy(out[1..][0..lc], len_buf[0..lc]);
     @memcpy(out[1 + lc ..], data);
     return out;
+}
+
+// ─── Tests ─────────────────────────────────────────────────────────────────────
+//
+// These are internal tests that directly exercise the private updNode* functions.
+// They cover the extension-node diverge case: deleting a key that doesn't exist
+// in the trie (key diverges from the extension prefix before its end) must return
+// the trie unchanged rather than incorrectly splitting the extension node.
+
+fn buildTestExtTrie(alloc: std.mem.Allocator) ![]const u8 {
+    // Builds: Extension(prefix=[0,0]) → Branch{child[1]:leaf"a", child[2]:leaf"b"}
+    // Full key nibbles for "a": [0, 0, 1]
+    // Full key nibbles for "b": [0, 0, 2]
+    const leaf_a = try updMakeLeaf(alloc, &.{}, "a");
+    const leaf_b = try updMakeLeaf(alloc, &.{}, "b");
+    var enc: [16][]const u8 = undefined;
+    for (0..16) |i| enc[i] = &[_]u8{0x80};
+    enc[1] = leaf_a;
+    enc[2] = leaf_b;
+    const branch = try updEncodeBranch(alloc, &enc, &.{});
+    const child_ref = try updHashOrEmbed(alloc, branch);
+    return updMakeExtension(alloc, &.{ 0, 0 }, child_ref);
+}
+
+test "updNode: deleting non-existent key (diverges from extension prefix) is a no-op" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const ext = try buildTestExtTrie(alloc);
+    // key[0]=0 matches prefix[0]=0, but key[1]=1 ≠ prefix[1]=0 → cp=1 < prefix.len=2
+    const result = try updNode(alloc, ext, &.{ 0, 1, 0, 0 }, null, &.{});
+    try std.testing.expectEqualSlices(u8, ext, result);
+}
+
+test "updNodeEx: deleting non-existent key (diverges from extension prefix) is a no-op" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const ext = try buildTestExtTrie(alloc);
+    var extra = std.ArrayListUnmanaged([]const u8).empty;
+    const result = try updNodeEx(alloc, ext, &.{ 0, 1, 0, 0 }, null, &.{}, &extra);
+    try std.testing.expectEqualSlices(u8, ext, result);
+    try std.testing.expectEqual(@as(usize, 0), extra.items.len);
+}
+
+test "updNodeExIndexed: deleting non-existent key (diverges from extension prefix) is a no-op" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const ext = try buildTestExtTrie(alloc);
+    var index = NodeIndex.init(alloc);
+    const result = try updNodeExIndexed(alloc, ext, &.{ 0, 1, 0, 0 }, null, &index);
+    try std.testing.expectEqualSlices(u8, ext, result);
+}
+
+// ─── Branch-collapse tests ─────────────────────────────────────────────────────
+//
+// Build: Branch{child[1]:leaf"a", child[2]:leaf"b"}
+// Delete child[1] → only child[2] remains → branch collapses to leaf "b" at key [2].
+// All three updNode variants must produce the same result.
+
+fn buildTestBranchTrie(alloc: std.mem.Allocator) !struct { branch: []const u8, pool: []const []const u8 } {
+    const leaf_a = try updMakeLeaf(alloc, &.{}, "a");
+    const leaf_b = try updMakeLeaf(alloc, &.{}, "b");
+    var enc: [16][]const u8 = undefined;
+    for (0..16) |i| enc[i] = try alloc.dupe(u8, &.{0x80});
+    enc[1] = try updHashOrEmbed(alloc, leaf_a);
+    enc[2] = try updHashOrEmbed(alloc, leaf_b);
+    const branch = try updEncodeBranch(alloc, &enc, &.{});
+    // pool contains leaf_a and leaf_b so hash refs can be resolved
+    const pool = try alloc.dupe([]const u8, &.{ leaf_a, leaf_b });
+    return .{ .branch = branch, .pool = pool };
+}
+
+test "updNode: deleting a key collapses branch to leaf" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const t = try buildTestBranchTrie(alloc);
+    // Delete key [1] — only child[2] remains → branch must collapse to a leaf at path [2].
+    const result = try updNode(alloc, t.branch, &.{1}, null, t.pool);
+    const expected = try updMakeLeaf(alloc, &.{2}, "b");
+    try std.testing.expectEqualSlices(u8, expected, result);
+}
+
+test "updNodeEx: deleting a key collapses branch to leaf" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const t = try buildTestBranchTrie(alloc);
+    var extra = std.ArrayListUnmanaged([]const u8).empty;
+    const result = try updNodeEx(alloc, t.branch, &.{1}, null, t.pool, &extra);
+    const expected = try updMakeLeaf(alloc, &.{2}, "b");
+    try std.testing.expectEqualSlices(u8, expected, result);
+}
+
+test "updNodeExIndexed: deleting a key collapses branch to leaf" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const t = try buildTestBranchTrie(alloc);
+    var index = try buildNodeIndex(alloc, t.pool);
+    defer index.deinit();
+    const result = try updNodeExIndexed(alloc, t.branch, &.{1}, null, &index);
+    const expected = try updMakeLeaf(alloc, &.{2}, "b");
+    try std.testing.expectEqualSlices(u8, expected, result);
+}
+
+// ─── Extension-merge tests ─────────────────────────────────────────────────────
+//
+// Build: Extension([0]) → Branch{child[1]:leaf"a", child[2]:leaf"b"}
+// Delete key [0,1] → branch collapses to leaf"b" at [2] → extension merges with
+// that leaf suffix → result is a single leaf at path [0,2].
+
+fn buildTestExtBranchTrie(alloc: std.mem.Allocator) !struct { root: []const u8, pool: []const []const u8 } {
+    const leaf_a = try updMakeLeaf(alloc, &.{}, "a");
+    const leaf_b = try updMakeLeaf(alloc, &.{}, "b");
+    var enc: [16][]const u8 = undefined;
+    for (0..16) |i| enc[i] = try alloc.dupe(u8, &.{0x80});
+    enc[1] = try updHashOrEmbed(alloc, leaf_a);
+    enc[2] = try updHashOrEmbed(alloc, leaf_b);
+    const branch = try updEncodeBranch(alloc, &enc, &.{});
+    const branch_ref = try updHashOrEmbed(alloc, branch);
+    const root = try updMakeExtension(alloc, &.{0}, branch_ref);
+    const pool = try alloc.dupe([]const u8, &.{ leaf_a, leaf_b, branch });
+    return .{ .root = root, .pool = pool };
+}
+
+test "updNode: deleting collapses branch and merges extension" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const t = try buildTestExtBranchTrie(alloc);
+    // Delete key [0,1] → extension([0])→branch collapses → result: leaf at [0,2].
+    const result = try updNode(alloc, t.root, &.{ 0, 1 }, null, t.pool);
+    const expected = try updMakeLeaf(alloc, &.{ 0, 2 }, "b");
+    try std.testing.expectEqualSlices(u8, expected, result);
+}
+
+test "updNodeEx: deleting collapses branch and merges extension" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const t = try buildTestExtBranchTrie(alloc);
+    var extra = std.ArrayListUnmanaged([]const u8).empty;
+    const result = try updNodeEx(alloc, t.root, &.{ 0, 1 }, null, t.pool, &extra);
+    const expected = try updMakeLeaf(alloc, &.{ 0, 2 }, "b");
+    try std.testing.expectEqualSlices(u8, expected, result);
+}
+
+test "updNodeExIndexed: deleting collapses branch and merges extension" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const t = try buildTestExtBranchTrie(alloc);
+    var index = try buildNodeIndex(alloc, t.pool);
+    defer index.deinit();
+    const result = try updNodeExIndexed(alloc, t.root, &.{ 0, 1 }, null, &index);
+    const expected = try updMakeLeaf(alloc, &.{ 0, 2 }, "b");
+    try std.testing.expectEqualSlices(u8, expected, result);
 }
 
 fn updRlpList(alloc: std.mem.Allocator, items: []const []const u8) ![]u8 {
