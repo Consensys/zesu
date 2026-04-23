@@ -520,7 +520,7 @@ pub const Host = struct {
                     sub_interp.return_data.data
                 else
                     &[_]u8{};
-                var rd_buf: std.ArrayList(u8) = .{};
+                var rd_buf: std.ArrayList(u8) = .empty;
                 defer rd_buf.deinit(alloc_mod.get());
                 rd_buf.appendSlice(alloc_mod.get(), rd) catch {};
                 var call_result = self.finalizeCall(s.checkpoint, sub_interp.result, inputs.gas_limit, sub_interp.gas.remaining, sub_interp.gas.refunded, rd_buf.items);
@@ -570,7 +570,7 @@ pub const Host = struct {
                     sub_interp.return_data.data
                 else
                     &[_]u8{};
-                var rd_buf: std.ArrayList(u8) = .{};
+                var rd_buf: std.ArrayList(u8) = .empty;
                 defer rd_buf.deinit(alloc_mod.get());
                 rd_buf.appendSlice(alloc_mod.get(), rd) catch {};
                 const sub_state_gas = sub_interp.gas.state_gas_used;

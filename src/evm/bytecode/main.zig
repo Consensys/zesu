@@ -136,9 +136,7 @@ pub const OpCode = struct {
     }
 
     /// Format opcode for display
-    pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (OPCODE_INFO[self.value]) |opcode_info| {
             try writer.writeAll(opcode_info.name);
         } else {

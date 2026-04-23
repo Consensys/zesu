@@ -17,13 +17,9 @@ const ssz_output = @import("ssz_output");
 const executor = @import("executor");
 const executor_exceptions = @import("executor").executor_exceptions;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     var fixtures_dir: []const u8 = "spec-tests/fixtures/zkevm/blockchain_tests";
     var single_file: ?[]const u8 = null;
@@ -51,24 +47,24 @@ pub fn main() !void {
     var skipped: u64 = 0;
 
     if (single_file) |path| {
-        processFile(allocator, path, quiet, &passed, &failed, &skipped) catch {};
+        processFile(init.io, allocator, path, quiet, &passed, &failed, &skipped) catch {};
     } else {
-        var dir = std.fs.cwd().openDir(fixtures_dir, .{ .iterate = true }) catch |err| {
+        var dir = std.Io.Dir.cwd().openDir(init.io, fixtures_dir, .{ .iterate = true }) catch |err| {
             std.debug.print("error: cannot open fixtures dir '{s}': {}\n", .{ fixtures_dir, err });
             std.process.exit(1);
         };
-        defer dir.close();
+        defer dir.close(init.io);
 
         var walker = try dir.walk(allocator);
         defer walker.deinit();
 
-        var paths = std.ArrayList([]u8){};
+        var paths = std.ArrayList([]u8).empty;
         defer {
             for (paths.items) |p| allocator.free(p);
             paths.deinit(allocator);
         }
 
-        while (try walker.next()) |entry| {
+        while (try walker.next(init.io)) |entry| {
             if (entry.kind != .file) continue;
             if (!std.mem.endsWith(u8, entry.path, ".json")) continue;
             try paths.append(allocator, try allocator.dupe(u8, entry.path));
@@ -81,11 +77,11 @@ pub fn main() !void {
         }.lessThan);
 
         for (paths.items) |rel_path| {
-            const full_path = try std.fs.path.join(allocator, &.{ fixtures_dir, rel_path });
+            const full_path = try std.Io.Dir.path.join(allocator, &.{ fixtures_dir, rel_path });
             defer allocator.free(full_path);
 
             const failed_before = failed;
-            processFile(allocator, full_path, quiet, &passed, &failed, &skipped) catch {};
+            processFile(init.io, allocator, full_path, quiet, &passed, &failed, &skipped) catch {};
             if (stop_on_fail and failed > failed_before) break;
         }
     }
@@ -101,12 +97,12 @@ pub fn main() !void {
     if (failed > 0) std.process.exit(1);
 }
 
-fn processFile(allocator: std.mem.Allocator, path: []const u8, quiet: bool, passed: *u64, failed: *u64, skipped: *u64) !void {
+fn processFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8, quiet: bool, passed: *u64, failed: *u64, skipped: *u64) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const json_text = std.fs.cwd().readFileAlloc(alloc, path, 256 * 1024 * 1024) catch |err| {
+    const json_text = std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(256 * 1024 * 1024)) catch |err| {
         std.debug.print("error: cannot read '{s}': {}\n", .{ path, err });
         return;
     };

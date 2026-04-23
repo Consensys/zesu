@@ -76,7 +76,7 @@ pub const HeaderFields = struct {
 
 /// Encode header fields as an RLP list and return keccak256 of the encoding.
 pub fn computeBlockHash(arena: std.mem.Allocator, h: HeaderFields) !Hash {
-    var fields = std.ArrayListUnmanaged([]const u8){};
+    var fields = std.ArrayListUnmanaged([]const u8).empty;
     try fields.append(arena, try rlp.encodeBytes(arena, &h.parent_hash));
     try fields.append(arena, try rlp.encodeBytes(arena, &h.uncle_hash));
     try fields.append(arena, try rlp.encodeBytes(arena, &h.coinbase));
@@ -200,7 +200,7 @@ pub fn parse(
     // ── Parse alloc ───────────────────────────────────────────────────────────
     const alloc_map = try parseAlloc(
         arena,
-        root.get("alloc") orelse std.json.Value{ .object = std.json.ObjectMap.init(arena) },
+        root.get("alloc") orelse std.json.Value{ .object = std.json.ObjectMap.empty },
     );
 
     // ── Compute stateRoot from alloc ──────────────────────────────────────────

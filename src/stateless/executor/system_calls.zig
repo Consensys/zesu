@@ -110,7 +110,7 @@ fn runSystemCall(
     // Set up calldata (may be empty for post-block calls).
     var data_list: ?std.ArrayList(u8) = null;
     if (calldata.len > 0) {
-        var dl = std.ArrayList(u8){};
+        var dl = std.ArrayList(u8).empty;
         dl.appendSlice(alloc_mod.get(), calldata) catch return;
         data_list = dl;
     }
@@ -273,7 +273,7 @@ fn runSystemCallCapture(
 
     var data_list: ?std.ArrayList(u8) = null;
     if (calldata.len > 0) {
-        var dl = std.ArrayList(u8){};
+        var dl = std.ArrayList(u8).empty;
         dl.appendSlice(alloc_mod.get(), calldata) catch return &.{};
         data_list = dl;
     }

@@ -65,7 +65,7 @@ test "BN254 G1Add Istanbul - Besu EIP-196 vectors" {
     var line_iter = std.mem.splitScalar(u8, g1_add_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue; // header / blank
 
@@ -109,7 +109,7 @@ test "BN254 G1Mul Istanbul - Besu EIP-196 vectors" {
     var line_iter = std.mem.splitScalar(u8, g1_mul_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue;
 
@@ -153,7 +153,7 @@ test "BN254 Pairing Istanbul - Besu EIP-196 vectors" {
     var line_iter = std.mem.splitScalar(u8, pairing_csv, '\n');
     var row: usize = 0;
     while (line_iter.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         row += 1;
         if (row == 1 or line.len == 0) continue;
 

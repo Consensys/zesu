@@ -210,7 +210,7 @@ pub const WarmAddresses = struct {
     pub fn new() WarmAddresses {
         return .{
             .coinbase = null,
-            .precompiles = std.ArrayList(primitives.Address){},
+            .precompiles = std.ArrayList(primitives.Address).empty,
             .access_list = std.AutoHashMap(primitives.Address, std.ArrayList(primitives.StorageKey)).init(alloc_mod.get()),
         };
     }
@@ -244,7 +244,7 @@ pub const WarmAddresses = struct {
         // Copy new access list
         var new_iterator = access_list.iterator();
         while (new_iterator.next()) |entry| {
-            var storage_keys = std.ArrayList(primitives.StorageKey){};
+            var storage_keys = std.ArrayList(primitives.StorageKey).empty;
             try storage_keys.appendSlice(alloc_mod.get(), entry.value_ptr.items);
             try self.access_list.put(entry.key_ptr.*, storage_keys);
         }
@@ -447,12 +447,12 @@ pub const JournalInner = struct {
         return .{
             .evm_state = state.EvmState.init(alloc_mod.get()),
             .transient_storage = state.TransientStorage.init(alloc_mod.get()),
-            .logs = std.ArrayList(primitives.Log){},
-            .journal = std.ArrayList(JournalEntry){},
+            .logs = std.ArrayList(primitives.Log).empty,
+            .journal = std.ArrayList(JournalEntry).empty,
             .transaction_id = 0,
             .spec = primitives.SpecId.prague,
             .warm_addresses = WarmAddresses.new(),
-            .pending_burns = std.ArrayList(PendingBurn){},
+            .pending_burns = std.ArrayList(PendingBurn).empty,
             .bal_pre_accounts = std.AutoHashMap(primitives.Address, AccountPreState).init(alloc_mod.get()),
             .bal_pre_storage = std.AutoHashMap(primitives.Address, std.AutoHashMap(primitives.StorageKey, primitives.StorageValue)).init(alloc_mod.get()),
             .bal_pending_accounts = std.AutoHashMap(primitives.Address, AccountPreState).init(alloc_mod.get()),
@@ -559,7 +559,7 @@ pub const JournalInner = struct {
     /// Returns the logs
     pub fn takeLogs(self: *JournalInner) std.ArrayList(primitives.Log) {
         const logs = self.logs;
-        self.logs = std.ArrayList(primitives.Log){};
+        self.logs = std.ArrayList(primitives.Log).empty;
         return logs;
     }
 

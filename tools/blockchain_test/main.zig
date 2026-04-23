@@ -18,13 +18,9 @@ const std = @import("std");
 
 const runner = @import("runner");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     // ── Parse CLI flags ───────────────────────────────────────────────────────
 
@@ -67,25 +63,25 @@ pub fn main() !void {
     var stats = runner.RunStats{};
 
     if (single_file) |path| {
-        _ = try processFile(allocator, path, path, fork_filter, stop_on_fail, quiet, json_output, &stats);
+        _ = try processFile(init.io, allocator, path, path, fork_filter, stop_on_fail, quiet, json_output, &stats);
     } else {
-        var dir = std.fs.cwd().openDir(fixtures_dir, .{ .iterate = true }) catch |err| {
+        var dir = std.Io.Dir.cwd().openDir(init.io, fixtures_dir, .{ .iterate = true }) catch |err| {
             std.debug.print("error: cannot open fixtures dir '{s}': {}\n", .{ fixtures_dir, err });
             std.process.exit(1);
         };
-        defer dir.close();
+        defer dir.close(init.io);
 
         var walker = try dir.walk(allocator);
         defer walker.deinit();
 
         // Collect and sort .json paths for deterministic ordering.
-        var paths = std.ArrayList([]u8){};
+        var paths = std.ArrayList([]u8).empty;
         defer {
             for (paths.items) |p| allocator.free(p);
             paths.deinit(allocator);
         }
 
-        while (try walker.next()) |entry| {
+        while (try walker.next(init.io)) |entry| {
             if (entry.kind != .file) continue;
             if (!std.mem.endsWith(u8, entry.path, ".json")) continue;
             try paths.append(allocator, try allocator.dupe(u8, entry.path));
@@ -98,15 +94,16 @@ pub fn main() !void {
         }.lessThan);
 
         // Get exe path for subprocess spawning.
-        var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const exe_path = std.fs.selfExePath(&exe_buf) catch args[0];
+        var exe_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+        const exe_len = std.process.executablePath(init.io, &exe_buf) catch 0;
+        const exe_path: []const u8 = if (exe_len > 0) exe_buf[0..exe_len] else args[0];
 
         for (paths.items) |rel_path| {
-            const full_path = try std.fs.path.join(allocator, &.{ fixtures_dir, rel_path });
+            const full_path = try std.Io.Dir.path.join(allocator, &.{ fixtures_dir, rel_path });
             defer allocator.free(full_path);
 
             // Run each file in a subprocess to isolate heap state.
-            var argv = std.ArrayList([]const u8){};
+            var argv = std.ArrayList([]const u8).empty;
             defer argv.deinit(allocator);
             try argv.appendSlice(allocator, &.{ exe_path, "--file", full_path });
             if (fork_filter) |f| try argv.appendSlice(allocator, &.{ "--fork", f });
@@ -114,20 +111,20 @@ pub fn main() !void {
             if (stop_on_fail) try argv.append(allocator, "-x");
             if (json_output) try argv.append(allocator, "--json");
 
-            var child = std.process.Child.init(argv.items, allocator);
-            child.stderr_behavior = .Pipe;
-            try child.spawn();
-
-            var stderr_buf = std.ArrayList(u8){};
-            defer stderr_buf.deinit(allocator);
-            var read_tmp: [4096]u8 = undefined;
-            while (true) {
-                const n = child.stderr.?.read(&read_tmp) catch break;
-                if (n == 0) break;
-                try stderr_buf.appendSlice(allocator, read_tmp[0..n]);
+            const result = std.process.run(allocator, init.io, .{
+                .argv = argv.items,
+            }) catch |err| {
+                if (!quiet) std.debug.print("SPAWN_ERROR  {s}: {}\n", .{ rel_path, err });
+                stats.skipped += 1;
+                if (stop_on_fail and stats.failed > 0) break;
+                continue;
+            };
+            defer {
+                allocator.free(result.stdout);
+                allocator.free(result.stderr);
             }
 
-            var lines = std.mem.splitScalar(u8, stderr_buf.items, '\n');
+            var lines = std.mem.splitScalar(u8, result.stderr, '\n');
             while (lines.next()) |line| {
                 if (std.mem.startsWith(u8, line, "STATS:")) {
                     var tok = std.mem.tokenizeScalar(u8, line["STATS:".len..], ' ');
@@ -149,17 +146,16 @@ pub fn main() !void {
                 }
             }
 
-            const term = child.wait() catch std.process.Child.Term{ .Exited = 1 };
-            switch (term) {
-                .Signal => |sig| {
-                    if (!quiet) std.debug.print("CRASH(sig:{})  {s}\n", .{ sig, rel_path });
-                    stats.skipped += 1;
-                },
-                .Exited => |code| {
+            switch (result.term) {
+                .exited => |code| {
                     if (code > 1) {
                         if (!quiet) std.debug.print("CRASH(exit:{})  {s}\n", .{ code, rel_path });
                         stats.skipped += 1;
                     }
+                },
+                .signal => |sig| {
+                    if (!quiet) std.debug.print("CRASH(sig:{})  {s}\n", .{ @intFromEnum(sig), rel_path });
+                    stats.skipped += 1;
                 },
                 else => {
                     if (!quiet) std.debug.print("CRASH  {s}\n", .{rel_path});
@@ -178,6 +174,7 @@ pub fn main() !void {
 }
 
 fn processFile(
+    io: std.Io,
     allocator: std.mem.Allocator,
     full_path: []const u8,
     rel_path: []const u8,
@@ -191,7 +188,7 @@ fn processFile(
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const json_text = std.fs.cwd().readFileAlloc(alloc, full_path, 256 * 1024 * 1024) catch |err| {
+    const json_text = std.Io.Dir.cwd().readFileAlloc(io, full_path, alloc, .limited(256 * 1024 * 1024)) catch |err| {
         std.debug.print("error: cannot read '{s}': {}\n", .{ full_path, err });
         return true;
     };

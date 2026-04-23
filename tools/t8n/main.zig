@@ -30,18 +30,15 @@ const transition_mod = @import("executor").executor_transition;
 const hardfork = @import("hardfork");
 const output_mod = @import("output.zig");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
     // Arena for all parsing and transition work
     var arena_state = std.heap.ArenaAllocator.init(allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     // ── Parse CLI flags ───────────────────────────────────────────────────────
 
@@ -101,15 +98,15 @@ pub fn main() !void {
 
     // ── Read and parse inputs ─────────────────────────────────────────────────
 
-    const alloc_json = readFile(arena, input_alloc_path) catch |err| {
+    const alloc_json = readFile(init.io, arena, input_alloc_path) catch |err| {
         std.debug.print("t8n: cannot read alloc '{s}': {}\n", .{ input_alloc_path, err });
         std.process.exit(11);
     };
-    const env_json = readFile(arena, input_env_path) catch |err| {
+    const env_json = readFile(init.io, arena, input_env_path) catch |err| {
         std.debug.print("t8n: cannot read env '{s}': {}\n", .{ input_env_path, err });
         std.process.exit(11);
     };
-    const txs_json = readFile(arena, input_txs_path) catch |err| {
+    const txs_json = readFile(init.io, arena, input_txs_path) catch |err| {
         std.debug.print("t8n: cannot read txs '{s}': {}\n", .{ input_txs_path, err });
         std.process.exit(11);
     };
@@ -151,26 +148,25 @@ pub fn main() !void {
     const alloc_stdout = std.mem.eql(u8, alloc_out, "stdout");
     const result_stdout = std.mem.eql(u8, result_out, "stdout");
 
-    const stdout_file = std.fs.File{ .handle = 1 };
-
     if (alloc_stdout and result_stdout) {
         // Combined stdout mode — buffer everything then write at once
-        var out = std.ArrayListUnmanaged(u8){};
-        const w = out.writer(arena);
+        var out = std.ArrayListUnmanaged(u8).empty;
+        const w: output_mod.ListWriter = .{ .list = &out, .alloc = arena };
         try w.writeAll("{\"alloc\": ");
         try output_mod.writeAllocJson(w, result.alloc);
         try w.writeAll(", \"result\": ");
         try output_mod.writeResultJson(arena, w, result, env.difficulty);
         try w.writeAll("}\n");
-        try stdout_file.writeAll(out.items);
+        try std.Io.File.stdout().writeStreamingAll(init.io, out.items);
     } else {
         // Write alloc
         if (alloc_stdout) {
-            var out = std.ArrayListUnmanaged(u8){};
-            try output_mod.writeAllocJson(out.writer(arena), result.alloc);
-            try stdout_file.writeAll(out.items);
+            var out = std.ArrayListUnmanaged(u8).empty;
+            const w: output_mod.ListWriter = .{ .list = &out, .alloc = arena };
+            try output_mod.writeAllocJson(w, result.alloc);
+            try std.Io.File.stdout().writeStreamingAll(init.io, out.items);
         } else if (!std.mem.eql(u8, alloc_out, "")) {
-            writeOutputFile(arena, alloc_out, result.alloc, result, env.difficulty, .alloc) catch |err| {
+            writeOutputFile(init.io, arena, alloc_out, result.alloc, result, env.difficulty, .alloc) catch |err| {
                 std.debug.print("t8n: cannot write alloc '{s}': {}\n", .{ alloc_out, err });
                 std.process.exit(11);
             };
@@ -178,11 +174,12 @@ pub fn main() !void {
 
         // Write result
         if (result_stdout) {
-            var out = std.ArrayListUnmanaged(u8){};
-            try output_mod.writeResultJson(arena, out.writer(arena), result, env.difficulty);
-            try stdout_file.writeAll(out.items);
+            var out = std.ArrayListUnmanaged(u8).empty;
+            const w: output_mod.ListWriter = .{ .list = &out, .alloc = arena };
+            try output_mod.writeResultJson(arena, w, result, env.difficulty);
+            try std.Io.File.stdout().writeStreamingAll(init.io, out.items);
         } else if (!std.mem.eql(u8, result_out, "")) {
-            writeOutputFile(arena, result_out, result.alloc, result, env.difficulty, .result) catch |err| {
+            writeOutputFile(init.io, arena, result_out, result.alloc, result, env.difficulty, .result) catch |err| {
                 std.debug.print("t8n: cannot write result '{s}': {}\n", .{ result_out, err });
                 std.process.exit(11);
             };
@@ -193,12 +190,12 @@ pub fn main() !void {
     if (output_body_path) |body_path| {
         const body_out = resolveOutputPath(arena, output_basedir, body_path) catch body_path;
         if (!std.mem.eql(u8, body_out, "stdout") and !std.mem.eql(u8, body_out, "")) {
-            if (ensureParentDir(body_out)) {
-                const f = std.fs.cwd().createFile(body_out, .{}) catch null;
+            if (ensureParentDir(init.io, body_out)) {
+                const f = std.Io.Dir.cwd().createFile(init.io, body_out, .{}) catch null;
                 if (f) |file| {
-                    defer file.close();
+                    defer file.close(init.io);
                     // Empty RLP list: 0xc0
-                    file.writeAll("\"0xc0\"\n") catch {};
+                    file.writeStreamingAll(init.io, "\"0xc0\"\n") catch {};
                 }
             }
         }
@@ -210,6 +207,7 @@ pub fn main() !void {
 const OutputKind = enum { alloc, result };
 
 fn writeOutputFile(
+    io: std.Io,
     arena: std.mem.Allocator,
     path: []const u8,
     alloc_map: std.AutoHashMapUnmanaged(input_mod.Address, input_mod.AllocAccount),
@@ -217,24 +215,21 @@ fn writeOutputFile(
     difficulty: u256,
     kind: OutputKind,
 ) !void {
-    _ = ensureParentDir(path);
-    // Buffer the JSON output, then write to file in one shot
-    // (File.writer() in Zig 0.15 requires an explicit buffer; using ArrayList avoids that)
-    var out = std.ArrayListUnmanaged(u8){};
-    const w = out.writer(arena);
+    _ = ensureParentDir(io, path);
+    var out = std.ArrayListUnmanaged(u8).empty;
+    const w: output_mod.ListWriter = .{ .list = &out, .alloc = arena };
     switch (kind) {
         .alloc => try output_mod.writeAllocJson(w, alloc_map),
         .result => try output_mod.writeResultJson(arena, w, result, difficulty),
     }
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
-    try file.writeAll(out.items);
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
+    try file.writeStreamingAll(io, out.items);
 }
 
-/// If path contains a directory component, create the directories.
-fn ensureParentDir(path: []const u8) bool {
-    const dir = std.fs.path.dirname(path) orelse return true;
-    std.fs.cwd().makePath(dir) catch {};
+fn ensureParentDir(io: std.Io, path: []const u8) bool {
+    const dir = std.Io.Dir.path.dirname(path) orelse return true;
+    std.Io.Dir.cwd().createDirPath(io, dir) catch {};
     return true;
 }
 
@@ -251,33 +246,27 @@ fn resolveOutputPath(
     const bd = basedir orelse return path;
 
     // Absolute paths ignore basedir
-    if (std.fs.path.isAbsolute(path)) return path;
+    if (std.Io.Dir.path.isAbsolute(path)) return path;
 
-    return std.fs.path.join(arena, &.{ bd, path });
+    return std.Io.Dir.path.join(arena, &.{ bd, path });
 }
 
-/// Read a file or stdin ("stdin" special value) into a heap-allocated buffer.
-fn readFile(arena: std.mem.Allocator, path: []const u8) ![]u8 {
+fn readFile(io: std.Io, arena: std.mem.Allocator, path: []const u8) ![]u8 {
     if (std.mem.eql(u8, path, "stdin")) {
-        // POSIX: file descriptor 0 is stdin
-        const stdin_file = std.fs.File{ .handle = 0 };
-        return stdin_file.readToEndAlloc(arena, 64 * 1024 * 1024);
+        var buf: [4096]u8 = undefined;
+        var reader = std.Io.File.stdin().reader(io, &buf);
+        return reader.interface.allocRemaining(arena, .limited(64 << 20));
     }
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
-    return file.readToEndAlloc(arena, 64 * 1024 * 1024);
+    return std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20));
 }
 
-/// Check if arg matches a flag prefix (handles both --flag=value and --flag forms).
 fn matchFlag(arg: []const u8, flag: []const u8) bool {
     if (std.mem.eql(u8, arg, flag)) return true;
     if (std.mem.startsWith(u8, arg, flag) and arg.len > flag.len and arg[flag.len] == '=') return true;
     return false;
 }
 
-/// Extract the value for a flag: either from --flag=VALUE or the next argument.
-/// Advances `i` if consuming the next argument.
-fn getFlag(arg: []const u8, args: []const []const u8, i: *usize) ?[]const u8 {
+fn getFlag(arg: []const u8, args: []const [:0]const u8, i: *usize) ?[]const u8 {
     // --flag=value form
     if (std.mem.indexOf(u8, arg, "=")) |eq| {
         if (eq < arg.len - 1) return arg[eq + 1 ..];

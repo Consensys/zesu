@@ -6,63 +6,66 @@
 const std = @import("std");
 const Chain = @import("chain.zig").Chain;
 
-pub fn serve(chain: *Chain) !void {
-    const addr = try std.net.Address.parseIp4("0.0.0.0", 8545);
-    var server = try addr.listen(.{ .reuse_address = true });
-    defer server.deinit();
+const ListWriter = struct {
+    list: *std.ArrayListUnmanaged(u8),
+    alloc: std.mem.Allocator,
+    pub const Error = std.mem.Allocator.Error;
+    pub fn writeAll(self: @This(), bytes: []const u8) Error!void {
+        return self.list.appendSlice(self.alloc, bytes);
+    }
+    pub fn print(self: @This(), comptime fmt: []const u8, args: anytype) Error!void {
+        return self.list.print(self.alloc, fmt, args);
+    }
+    pub fn writeByte(self: @This(), byte: u8) Error!void {
+        return self.list.append(self.alloc, byte);
+    }
+};
+
+pub fn serve(io: std.Io, chain: *Chain) !void {
+    const addr = try std.Io.net.IpAddress.parseIp4("0.0.0.0", 8545);
+    var server = try addr.listen(io, .{ .reuse_address = true });
+    defer server.deinit(io);
 
     while (true) {
-        const conn = server.accept() catch continue;
-        defer conn.stream.close();
-        handleConn(chain, conn.stream) catch {};
+        const stream = server.accept(io) catch continue;
+        defer stream.close(io);
+        handleConn(io, chain, stream) catch {};
     }
 }
 
-fn handleConn(chain: *Chain, stream: std.net.Stream) !void {
+fn handleConn(io: std.Io, chain: *Chain, stream: std.Io.net.Stream) !void {
     // Arena lives for the entire connection so that the RPC response string
     // (allocated inside processRpc) remains valid until after writeAll.
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var buf: [65536]u8 = undefined;
-    var total: usize = 0;
+    // Use a large reader buffer so the first netRead captures the full HTTP
+    // request in one syscall. peekDelimiterInclusive reads one line at a time
+    // without looping on netRead — it only calls fillMore (one netRead) when
+    // the internal buffer is empty, then scans what arrived.
+    var rbuf: [8192]u8 = undefined;
+    var reader = stream.reader(io, &rbuf);
 
-    // Read until we have a complete HTTP request (headers + body)
-    while (total < buf.len) {
-        const n = try stream.read(buf[total..]);
-        if (n == 0) break;
-        total += n;
-
-        // Check if we have full headers (\r\n\r\n)
-        if (std.mem.indexOf(u8, buf[0..total], "\r\n\r\n") != null) break;
-    }
-    const raw = buf[0..total];
-
-    // Find headers / body split
-    const header_end = std.mem.indexOf(u8, raw, "\r\n\r\n") orelse return;
-    const headers_str = raw[0..header_end];
-    const body_start = header_end + 4;
-
-    // Parse Content-Length
+    // Parse headers line by line.
     var content_length: usize = 0;
-    var lines = std.mem.splitScalar(u8, headers_str, '\n');
-    while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \r");
+    while (true) {
+        const line = reader.interface.peekDelimiterInclusive('\n') catch break;
+        const trimmed = std.mem.trimEnd(u8, line, "\r\n");
+        reader.interface.toss(line.len);
+        if (trimmed.len == 0) break; // blank line = end of headers
         if (std.ascii.startsWithIgnoreCase(trimmed, "content-length:")) {
             const val = std.mem.trim(u8, trimmed["content-length:".len..], " ");
             content_length = std.fmt.parseInt(usize, val, 10) catch 0;
         }
     }
 
-    // Read remaining body bytes if needed
-    while (total - body_start < content_length and total < buf.len) {
-        const n = stream.read(buf[total..]) catch break;
-        if (n == 0) break;
-        total += n;
-    }
+    // Read exactly Content-Length body bytes (already buffered in most cases).
+    var body_buf: [65536]u8 = undefined;
+    const body_len = @min(content_length, body_buf.len);
+    reader.interface.readSliceAll(body_buf[0..body_len]) catch {};
+    const body = body_buf[0..body_len];
 
-    const body = buf[body_start..@min(body_start + content_length, total)];
     const response_body = processRpc(chain, alloc, body);
 
     // Write HTTP 200 response
@@ -72,7 +75,10 @@ fn handleConn(chain: *Chain, stream: std.net.Stream) !void {
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{s}",
         .{ response_body.len, response_body },
     ) catch return;
-    _ = stream.writeAll(resp) catch {};
+    var wbuf: [512]u8 = undefined;
+    var writer = stream.writer(io, &wbuf);
+    writer.interface.writeAll(resp) catch {};
+    writer.interface.flush() catch {};
 }
 
 fn processRpc(chain: *Chain, alloc: std.mem.Allocator, body: []const u8) []const u8 {
@@ -118,8 +124,8 @@ fn processRpc(chain: *Chain, alloc: std.mem.Allocator, body: []const u8) []const
 }
 
 fn buildBlockObject(alloc: std.mem.Allocator, s: @import("chain.zig").StoredHeader) ![]const u8 {
-    var buf = std.ArrayListUnmanaged(u8){};
-    const w = buf.writer(alloc);
+    var buf = std.ArrayListUnmanaged(u8).empty;
+    const w: ListWriter = .{ .list = &buf, .alloc = alloc };
     try w.writeAll("{");
     try w.print("\"hash\":\"0x{x}\"", .{s.hash});
     try w.print(",\"number\":\"0x{x}\"", .{s.number});

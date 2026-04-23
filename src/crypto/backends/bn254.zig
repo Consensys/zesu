@@ -149,7 +149,7 @@ fn runPairing(input: []const u8, pair_per_point_cost: u64, pair_base_cost: u64, 
     }
 
     // Parse pairs
-    var pairs = std.ArrayListUnmanaged(G1G2Pair){};
+    var pairs = std.ArrayListUnmanaged(G1G2Pair).empty;
     defer pairs.deinit(alloc_mod.get());
     pairs.ensureTotalCapacity(alloc_mod.get(), num_pairs) catch {
         return T.PrecompileResult{ .err = T.PrecompileError.OutOfGas };

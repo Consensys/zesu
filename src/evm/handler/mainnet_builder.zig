@@ -165,7 +165,7 @@ pub const MainnetHandler = struct {
             for (items.items) |item| {
                 const gop = try map.getOrPut(item.address);
                 if (!gop.found_existing) {
-                    gop.value_ptr.* = std.ArrayList(primitives.StorageKey){};
+                    gop.value_ptr.* = std.ArrayList(primitives.StorageKey).empty;
                 }
                 for (item.storage_keys.items) |key| {
                     try gop.value_ptr.*.append(allocator, key);
@@ -287,7 +287,7 @@ pub const MainnetHandler = struct {
         const DB = @TypeOf(ctx.*).DatabaseType;
         var host = interpreter_mod.Host.init(DB, ctx, &evm.precompiles.precompiles);
 
-        var return_data_buf: std.ArrayList(u8) = .{};
+        var return_data_buf: std.ArrayList(u8) = .empty;
         defer return_data_buf.deinit(alloc_mod.get());
 
         switch (tx.kind) {
@@ -619,7 +619,7 @@ fn executeIterative(
 ) !IterativeResult {
     const call_ops = interpreter_mod.opcodes.call_ops;
 
-    var frames = std.ArrayList(FrameEntry){};
+    var frames = std.ArrayList(FrameEntry).empty;
     defer {
         for (frames.items) |*f| f.interp.deinit();
         frames.deinit(alloc_mod.get());

@@ -11,12 +11,10 @@ The client (`hive-rlp`) reads a genesis JSON and a sequence of RLP-encoded block
 
 ## 1. Build the Docker image
 
-BuildKit (the default builder on Docker Desktop for Mac) has issues with this build — it filters the build context incorrectly and the Zig build runner panics inside the container. Disable BuildKit with `DOCKER_BUILDKIT=0` to use the classic builder.
-
 Run from the `zesu` repo root:
 
 ```bash
-DOCKER_BUILDKIT=0 docker build -t zesu:latest -f ./tools/hive/Dockerfile .
+docker build -t zesu:latest -f ./tools/hive/Dockerfile .
 ```
 
 The first build takes ~5 minutes (downloads and compiles Zig, blst, mcl). Subsequent builds with only source changes are ~30s due to Docker layer caching.
@@ -66,7 +64,7 @@ clients:
 After editing source files, rebuild from the `zesu` repo root:
 
 ```bash
-DOCKER_BUILDKIT=0 docker build -t zesu:latest -f ./tools/hive/Dockerfile .
+docker build -t zesu:latest -f ./tools/hive/Dockerfile .
 ```
 
 Then re-run the Hive command.
@@ -80,10 +78,9 @@ Then re-run the Hive command.
 | `chain.zig` | In-memory chain: decodes RLP blocks, executes via zesu, verifies roots |
 | `fork_env.zig` | Reads `HIVE_*` env vars to build the fork schedule |
 | `rpc.zig` | Minimal HTTP/JSON-RPC server on `:8545` (`eth_blockNumber`, `eth_getBlockByNumber`) |
-| `Dockerfile` | Multi-stage build: Zig 0.15.1 + blst + mcl (shared lib) |
+| `Dockerfile` | Multi-stage build: Zig 0.16.0 + blst + mcl (shared lib) |
 
 ## Known issues / notes
 
 - **mcl is linked as a shared library** (`libmcl.so`). Static linking fails because Zig's LLD cannot resolve C++ symbols from libstdc++/libc++. The runtime image includes `libc++1` and copies `libmcl.so*`.
-- **`std.fmt.fmtSliceHexLower` does not exist in Zig 0.15.1**. The `bytesToHex` helper in `rpc.zig` is used instead.
 - The `zesu.yaml` in Hive uses `baseimage: zesu, tag: latest` — it does not build from source itself, it wraps the pre-built image.
