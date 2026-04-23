@@ -248,3 +248,49 @@ test "verifyWitness — single account in pool" {
     const proven_root = try mpt.verifyWitness(w);
     try std.testing.expectEqualSlices(u8, &state_root, &proven_root);
 }
+
+// ─── Test 7: updateStorage no-op delete ──────────────────────────────────────
+
+test "updateStorage: deleting non-existent slot does not change root" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var slot_a: primitives.Hash = @splat(0);
+    slot_a[31] = 0x01;
+    var slot_b: primitives.Hash = @splat(0);
+    slot_b[31] = 0x02; // never inserted
+
+    var extra = std.ArrayListUnmanaged([]const u8).empty;
+    var root = EMPTY_TRIE_HASH;
+    try mpt.updateStorageChained(alloc, &root, slot_a, 100, &.{}, &extra);
+    const root_after_insert = root;
+
+    const new_root = try mpt.updateStorage(alloc, root, slot_b, 0, extra.items);
+    try std.testing.expectEqualSlices(u8, &root_after_insert, &new_root);
+}
+
+// ─── Test 8: updateStorageChained no-op delete ────────────────────────────────
+
+test "updateStorageChained: deleting non-existent slot does not change root" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var slot_a: primitives.Hash = @splat(0);
+    slot_a[31] = 0x01;
+    var slot_b: primitives.Hash = @splat(0);
+    slot_b[31] = 0x02;
+    var slot_c: primitives.Hash = @splat(0);
+    slot_c[31] = 0x03; // never inserted
+
+    var extra = std.ArrayListUnmanaged([]const u8).empty;
+    var root = EMPTY_TRIE_HASH;
+    try mpt.updateStorageChained(alloc, &root, slot_a, 1, &.{}, &extra);
+    try mpt.updateStorageChained(alloc, &root, slot_b, 2, extra.items, &extra);
+    const root_before = root;
+
+    var extra2 = std.ArrayListUnmanaged([]const u8).empty;
+    try mpt.updateStorageChained(alloc, &root, slot_c, 0, extra.items, &extra2);
+    try std.testing.expectEqualSlices(u8, &root_before, &root);
+}

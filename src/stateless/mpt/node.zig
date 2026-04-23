@@ -52,14 +52,18 @@ pub fn decodeNode(bytes: []const u8) error{ InvalidRlp, InvalidNode }!DecodedNod
         .bytes => return error.InvalidNode,
     };
 
-    // Collect up to 17 items from the list payload.
+    // Collect up to 17 items from the list payload, tracking raw bytes per item
+    // so that inline list children (short nodes embedded directly) can be
+    // reconstructed as NodeRef.inline_node with their full RLP bytes.
     var items: [17]rlp.RlpItem = undefined;
+    var item_raws: [17][]const u8 = undefined;
     var count: usize = 0;
     var rest = payload;
     while (rest.len > 0) {
         if (count >= 17) return error.InvalidNode;
         const r = try rlp.decodeItem(rest);
         items[count] = r.item;
+        item_raws[count] = rest[0..r.consumed];
         count += 1;
         rest = rest[r.consumed..];
     }
@@ -85,7 +89,7 @@ pub fn decodeNode(bytes: []const u8) error{ InvalidRlp, InvalidNode }!DecodedNod
             } else {
                 return .{ .extension = .{
                     .prefix = key_bytes,
-                    .child = try decodeNodeRef(items[1]),
+                    .child = try decodeNodeRef(items[1], item_raws[1]),
                 } };
             }
         },
@@ -93,7 +97,7 @@ pub fn decodeNode(bytes: []const u8) error{ InvalidRlp, InvalidNode }!DecodedNod
             // 17-item branch node: 16 children + 1 value slot.
             var children: [16]NodeRef = undefined;
             for (0..16) |i| {
-                children[i] = try decodeNodeRef(items[i]);
+                children[i] = try decodeNodeRef(items[i], item_raws[i]);
             }
             const value: []const u8 = switch (items[16]) {
                 .bytes => |b| b,
@@ -106,7 +110,10 @@ pub fn decodeNode(bytes: []const u8) error{ InvalidRlp, InvalidNode }!DecodedNod
 }
 
 /// Convert an RLP item into a NodeRef.
-fn decodeNodeRef(item: rlp.RlpItem) error{InvalidNode}!NodeRef {
+/// `raw` is the full RLP bytes of the item (including any list header), used
+/// when the item is an inline list node (a short branch/extension < 32 bytes
+/// embedded directly rather than hash-referenced).
+fn decodeNodeRef(item: rlp.RlpItem, raw: []const u8) error{InvalidNode}!NodeRef {
     switch (item) {
         .bytes => |b| {
             if (b.len == 0) return .{ .empty = {} };
@@ -118,12 +125,10 @@ fn decodeNodeRef(item: rlp.RlpItem) error{InvalidNode}!NodeRef {
             // Short encoding: inline node (< 32 bytes of raw RLP).
             return .{ .inline_node = b };
         },
-        .list => |l| {
-            // An inline node can also arrive as an already-decoded list payload
-            // when the child is short enough to be inlined rather than hashed.
-            // We treat the raw list payload as the inline node bytes.
-            _ = l;
-            return error.InvalidNode; // handled via outer bytes path in practice
+        .list => {
+            // Inline node embedded as a list: a short branch or extension
+            // (< 32 bytes) whose full RLP is included directly in the parent.
+            return .{ .inline_node = raw };
         },
     }
 }
