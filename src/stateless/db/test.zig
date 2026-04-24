@@ -368,7 +368,7 @@ test "storage returns 0 for account with empty storage trie" {
 
 // ─── Test 8: blockHash — returns zero hash ─────────────────────────────────────
 
-test "blockHash returns zero hash (Phase 3 placeholder)" {
+test "blockHash returns InvalidWitness for missing hash" {
     const w = input.StateWitness{
         .state_root = [_]u8{0} ** 32,
         .nodes = &.{},
@@ -380,6 +380,5 @@ test "blockHash returns zero hash (Phase 3 placeholder)" {
     var wdb = try makeWdb(w, &idx);
     defer idx.deinit();
     defer wdb.deinit();
-    const hash = try wdb.blockHash(12345678);
-    try std.testing.expectEqualSlices(u8, &([_]u8{0} ** 32), &hash);
+    try std.testing.expectError(error.InvalidWitness, wdb.blockHash(12345678));
 }
