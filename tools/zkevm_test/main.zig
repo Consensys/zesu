@@ -44,10 +44,9 @@ pub fn main(init: std.process.Init) !void {
 
     var passed: u64 = 0;
     var failed: u64 = 0;
-    var skipped: u64 = 0;
 
     if (single_file) |path| {
-        processFile(init.io, allocator, path, quiet, &passed, &failed, &skipped) catch {};
+        processFile(init.io, allocator, path, quiet, &passed, &failed) catch {};
     } else {
         var dir = std.Io.Dir.cwd().openDir(init.io, fixtures_dir, .{ .iterate = true }) catch |err| {
             std.debug.print("error: cannot open fixtures dir '{s}': {}\n", .{ fixtures_dir, err });
@@ -81,7 +80,7 @@ pub fn main(init: std.process.Init) !void {
             defer allocator.free(full_path);
 
             const failed_before = failed;
-            processFile(init.io, allocator, full_path, quiet, &passed, &failed, &skipped) catch {};
+            processFile(init.io, allocator, full_path, quiet, &passed, &failed) catch {};
             if (stop_on_fail and failed > failed_before) break;
         }
     }
@@ -91,13 +90,12 @@ pub fn main(init: std.process.Init) !void {
     std.debug.print("\n============================================================\n", .{});
     std.debug.print("  Results:  {}/{} passed  ({}%)\n", .{ passed, total, pct });
     if (failed > 0) std.debug.print("  Failed:   {}\n", .{failed});
-    if (skipped > 0) std.debug.print("  Skipped:  {} (invalid fixture — SSZ missing transactions)\n", .{skipped});
     std.debug.print("============================================================\n", .{});
 
     if (failed > 0) std.process.exit(1);
 }
 
-fn processFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8, quiet: bool, passed: *u64, failed: *u64, skipped: *u64) !void {
+fn processFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8, quiet: bool, passed: *u64, failed: *u64) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -133,7 +131,6 @@ fn processFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8, quiet
         if (blocks_val != .array) continue;
 
         var test_ok = true;
-        var test_skipped = false;
         for (blocks_val.array.items, 0..) |block_val, block_idx| {
             if (block_val != .object) continue;
             const in_hex = switch (block_val.object.get("statelessInputBytes") orelse continue) {
@@ -169,17 +166,12 @@ fn processFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8, quiet
             };
 
             const block_ok = runBlock(alloc, test_name, block_idx, in_hex, out_hex, expected_tx_root_hex, fork_name, quiet) catch |err| blk: {
-                if (err == error.SSZTransactionRootMismatch) {
-                    if (!quiet) std.debug.print("SKIP {s}[{}]  invalid fixture: SSZ missing transactions\n", .{ test_name, block_idx });
-                    test_skipped = true;
-                    break :blk true;
-                }
                 std.debug.print("FAIL {s}[{}]  error: {}\n", .{ test_name, block_idx, err });
                 break :blk false;
             };
             if (!block_ok) test_ok = false;
         }
-        if (test_skipped) skipped.* += 1 else if (test_ok) passed.* += 1 else failed.* += 1;
+        if (test_ok) passed.* += 1 else failed.* += 1;
     }
 }
 
@@ -208,23 +200,23 @@ fn runBlock(
 
     // Pre-execution: check that the SSZ transactions match the block's transactionsTrie
     // from the fixture.  When they differ the SSZ is missing transactions (e.g. a block
-    // with an over-max initcode tx that was omitted from the SSZ encoding).  We cannot
-    // validate such a block from SSZ alone, so we skip it rather than producing a
-    // misleading pass/fail result.
+    // with an invalid tx that cannot be SSZ-encoded).  The block is invalid in that case,
+    // so we set successful_validation=false and verify the output without executing.
+    var tx_root_mismatch = false;
     if (expected_tx_root_hex) |hex| {
         const stripped = if (std.mem.startsWith(u8, hex, "0x")) hex[2..] else hex;
         if (stripped.len == 64) {
             var want: [32]u8 = undefined;
             _ = std.fmt.hexToBytes(&want, stripped) catch {};
             const got = try executor.computeRawTxRoot(alloc, ep.raw_transactions);
-            if (!std.mem.eql(u8, &got, &want)) return error.SSZTransactionRootMismatch;
+            if (!std.mem.eql(u8, &got, &want)) tx_root_mismatch = true;
         }
     }
 
     // successful_validation mirrors spec: True iff execution succeeds AND
     // post_state_root and receipts_root match the expected values in the payload.
     var exec_err: anyerror = error.Success;
-    const successful_validation = blk: {
+    const successful_validation = if (tx_root_mismatch) false else blk: {
         const proof = executor.executeStatelessInput(alloc, si, fork_name) catch |err| {
             exec_err = err;
             break :blk false;
