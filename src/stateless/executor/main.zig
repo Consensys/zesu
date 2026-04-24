@@ -388,6 +388,10 @@ pub fn executeBlockStateless(
         fork_mod.blockReward(spec),
         public_keys,
     );
+    // A non-ok ctx_error means a DB operation failed during execution (e.g., BLOCKHASH
+    // for a block whose header was not included in the witness). Per EIP-8025, such blocks
+    // are invalid even if the state root happens to match.
+    if (ctx.ctx_error != .ok) return error.InvalidWitness;
     var access_log = ctx.journaled_state.takeAccessLog();
     defer access_log.deinit();
     const accessed = try buildAccessedEntries(alloc, access_log, result.alloc, result.deleted_accounts);
@@ -412,29 +416,59 @@ pub fn executeStatelessInput(
     var node_index = try mpt.buildNodeIndex(alloc, si.witness.nodes);
     defer node_index.deinit();
 
+    const HeaderInfo = struct { number: u64, parent_hash: [32]u8, hash: [32]u8 };
+    var header_infos = std.ArrayListUnmanaged(HeaderInfo).empty;
     var block_hashes = std.ArrayListUnmanaged(BlockHashEntry).empty;
     for (si.witness.headers) |hdr_rlp| {
         const hash = mpt.keccak256(hdr_rlp);
-        const outer = mpt.rlp.decodeItem(hdr_rlp) catch continue;
+        const outer = mpt.rlp.decodeItem(hdr_rlp) catch return error.InvalidWitness;
         var rest = switch (outer.item) {
             .list => |p| p,
-            .bytes => continue,
+            .bytes => return error.InvalidWitness,
         };
+        // Field [0]: parent_hash (32-byte bytes item)
+        const ph_r = mpt.rlp.decodeItem(rest) catch return error.InvalidWitness;
+        const ph_bytes = switch (ph_r.item) {
+            .bytes => |b| b,
+            .list => return error.InvalidWitness,
+        };
+        if (ph_bytes.len != 32) return error.InvalidWitness;
+        var parent_hash: [32]u8 = undefined;
+        @memcpy(&parent_hash, ph_bytes);
+        rest = rest[ph_r.consumed..];
+        // Skip fields [1]-[7] (7 fields between parent_hash and block number)
         var skip: usize = 0;
-        while (skip < 8 and rest.len > 0) : (skip += 1) {
-            const fr = mpt.rlp.decodeItem(rest) catch break;
+        while (skip < 7 and rest.len > 0) : (skip += 1) {
+            const fr = mpt.rlp.decodeItem(rest) catch return error.InvalidWitness;
             rest = rest[fr.consumed..];
         }
-        if (rest.len == 0) continue;
-        const num_r = mpt.rlp.decodeItem(rest) catch continue;
+        if (rest.len == 0) return error.InvalidWitness;
+        const num_r = mpt.rlp.decodeItem(rest) catch return error.InvalidWitness;
         const num_bytes = switch (num_r.item) {
             .bytes => |b| b,
-            .list => continue,
+            .list => return error.InvalidWitness,
         };
-        if (num_bytes.len > 8) continue;
+        if (num_bytes.len > 8) return error.InvalidWitness;
         var number: u64 = 0;
         for (num_bytes) |b| number = (number << 8) | b;
         try block_hashes.append(alloc, .{ .number = number, .hash = hash });
+        try header_infos.append(alloc, .{ .number = number, .parent_hash = parent_hash, .hash = hash });
+    }
+
+    // Validate header chain: headers must be provided in ascending block-number order
+    // (each header's keccak256 must equal the next header's parent_hash), and the
+    // last header's hash must match EP.parent_hash (chain anchor). Out-of-order
+    // headers (e.g. reversed) break the hash-linkage check and are rejected.
+    if (header_infos.items.len > 0) {
+        for (0..header_infos.items.len - 1) |k| {
+            if (!std.mem.eql(u8, &header_infos.items[k].hash, &header_infos.items[k + 1].parent_hash)) {
+                return error.InvalidWitness;
+            }
+        }
+        const last = header_infos.items[header_infos.items.len - 1];
+        if (!std.mem.eql(u8, &last.hash, &ep.parent_hash)) {
+            return error.InvalidWitness;
+        }
     }
 
     return executeBlockStateless(

@@ -190,11 +190,21 @@ fn computeStorageRootIndexed(
 
     if (old_root) |root_val| {
         var root = root_val;
+        // MPT chained updates require inserts (non-zero) before deletes (zero).
+        // Two passes over the map avoid a sort, keeping this O(n) with no comparisons.
         var it = account.storage.iterator();
         while (it.next()) |entry| {
+            if (entry.value_ptr.* == 0) continue;
             var slot_key: [32]u8 = undefined;
             std.mem.writeInt(u256, &slot_key, entry.key_ptr.*, .big);
             try mpt.updateStorageChainedIndexed(alloc, &root, slot_key, entry.value_ptr.*, index);
+        }
+        it = account.storage.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* != 0) continue;
+            var slot_key: [32]u8 = undefined;
+            std.mem.writeInt(u256, &slot_key, entry.key_ptr.*, .big);
+            try mpt.updateStorageChainedIndexed(alloc, &root, slot_key, 0, index);
         }
         return root;
     }
