@@ -1175,7 +1175,7 @@ pub fn transitionWithContext(
         }
     }
 
-    const bal_hash: ?[32]u8 = if (tracker) |*t| t.computeHash(arena, ctx, env.gas_limit) catch null else null;
+    const bal_hash: ?[32]u8 = if (tracker) |*t| try t.computeHash(arena, ctx, env.gas_limit) else null;
 
     // ── EIP-7685 requests_hash ────────────────────────────────────────────────
     const deposits = if (primitives.isEnabledIn(spec, .prague)) try collectDeposits(arena, receipts.items) else &.{};
