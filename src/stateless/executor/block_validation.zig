@@ -27,10 +27,11 @@ pub fn validateBlock(env: types.Env, spec: primitives.SpecId) !void {
         if (env.timestamp <= pt) return error.InvalidBlockTimestampOlderThanParent;
     }
 
-    // INVALID_GASLIMIT: |gas_limit - parent_gas_limit| < parent_gas_limit / 1024
-    // and gas_limit >= MIN_GAS_LIMIT
+    // INVALID_GASLIMIT: gas_limit >= MIN_GAS_LIMIT always,
+    // and |gas_limit - parent_gas_limit| < parent_gas_limit / 1024 when parent is known
+    if (env.gas_limit < MIN_GAS_LIMIT) return error.InvalidGasLimit;
+
     if (env.parent_gas_limit) |pgl| {
-        if (env.gas_limit < MIN_GAS_LIMIT) return error.InvalidGasLimit;
         const max_delta = pgl / GAS_LIMIT_ADJUSTMENT_FACTOR;
         const diff = if (env.gas_limit > pgl) env.gas_limit - pgl else pgl - env.gas_limit;
         if (diff >= max_delta) return error.InvalidGasLimit;
