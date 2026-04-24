@@ -421,34 +421,34 @@ pub fn executeStatelessInput(
     var block_hashes = std.ArrayListUnmanaged(BlockHashEntry).empty;
     for (si.witness.headers) |hdr_rlp| {
         const hash = mpt.keccak256(hdr_rlp);
-        const outer = mpt.rlp.decodeItem(hdr_rlp) catch continue;
+        const outer = mpt.rlp.decodeItem(hdr_rlp) catch return error.InvalidWitness;
         var rest = switch (outer.item) {
             .list => |p| p,
-            .bytes => continue,
+            .bytes => return error.InvalidWitness,
         };
         // Field [0]: parent_hash (32-byte bytes item)
-        const ph_r = mpt.rlp.decodeItem(rest) catch continue;
+        const ph_r = mpt.rlp.decodeItem(rest) catch return error.InvalidWitness;
         const ph_bytes = switch (ph_r.item) {
             .bytes => |b| b,
-            .list => continue,
+            .list => return error.InvalidWitness,
         };
-        if (ph_bytes.len != 32) continue;
+        if (ph_bytes.len != 32) return error.InvalidWitness;
         var parent_hash: [32]u8 = undefined;
         @memcpy(&parent_hash, ph_bytes);
         rest = rest[ph_r.consumed..];
         // Skip fields [1]-[7] (7 fields between parent_hash and block number)
         var skip: usize = 0;
         while (skip < 7 and rest.len > 0) : (skip += 1) {
-            const fr = mpt.rlp.decodeItem(rest) catch break;
+            const fr = mpt.rlp.decodeItem(rest) catch return error.InvalidWitness;
             rest = rest[fr.consumed..];
         }
-        if (rest.len == 0) continue;
-        const num_r = mpt.rlp.decodeItem(rest) catch continue;
+        if (rest.len == 0) return error.InvalidWitness;
+        const num_r = mpt.rlp.decodeItem(rest) catch return error.InvalidWitness;
         const num_bytes = switch (num_r.item) {
             .bytes => |b| b,
-            .list => continue,
+            .list => return error.InvalidWitness,
         };
-        if (num_bytes.len > 8) continue;
+        if (num_bytes.len > 8) return error.InvalidWitness;
         var number: u64 = 0;
         for (num_bytes) |b| number = (number << 8) | b;
         try block_hashes.append(alloc, .{ .number = number, .hash = hash });

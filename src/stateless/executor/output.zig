@@ -190,27 +190,21 @@ fn computeStorageRootIndexed(
 
     if (old_root) |root_val| {
         var root = root_val;
-        // Collect entries and sort inserts (non-zero) before deletes (zero).
-        // MPT chained updates require inserting new nodes before removing old ones;
-        // hashmap iteration order is undefined so we must sort explicitly.
-        const StorageEntry = struct { key: u256, value: u256 };
-        const count = account.storage.count();
-        const entries = try alloc.alloc(StorageEntry, count);
+        // MPT chained updates require inserts (non-zero) before deletes (zero).
+        // Two passes over the map avoid a sort, keeping this O(n) with no comparisons.
         var it = account.storage.iterator();
-        var idx: usize = 0;
         while (it.next()) |entry| {
-            entries[idx] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* };
-            idx += 1;
-        }
-        std.mem.sort(StorageEntry, entries[0..idx], {}, struct {
-            fn lessThan(_: void, a: StorageEntry, b: StorageEntry) bool {
-                return (a.value != 0) and (b.value == 0);
-            }
-        }.lessThan);
-        for (entries[0..idx]) |entry| {
+            if (entry.value_ptr.* == 0) continue;
             var slot_key: [32]u8 = undefined;
-            std.mem.writeInt(u256, &slot_key, entry.key, .big);
-            try mpt.updateStorageChainedIndexed(alloc, &root, slot_key, entry.value, index);
+            std.mem.writeInt(u256, &slot_key, entry.key_ptr.*, .big);
+            try mpt.updateStorageChainedIndexed(alloc, &root, slot_key, entry.value_ptr.*, index);
+        }
+        it = account.storage.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* != 0) continue;
+            var slot_key: [32]u8 = undefined;
+            std.mem.writeInt(u256, &slot_key, entry.key_ptr.*, .big);
+            try mpt.updateStorageChainedIndexed(alloc, &root, slot_key, 0, index);
         }
         return root;
     }
