@@ -73,7 +73,7 @@ pub const WitnessDatabase = struct {
     /// deployed by CREATE in that transaction. Allows codeByHash to serve them without
     /// requiring them in the witness (EIP-8025: the verifier derives them from execution).
     pub fn notifyCodeDeployed(self: *Self, code_hash: primitives.Hash, code: bytecode.Bytecode) void {
-        self.deployed_codes.put(code_hash, code) catch {};
+        self.deployed_codes.put(code_hash, code) catch unreachable;
     }
 
     // ── basic ───────────────────────────────────────────────────────────────
@@ -118,8 +118,6 @@ pub const WitnessDatabase = struct {
                 return bytecode.Bytecode.newLegacy(code_bytes);
             }
         }
-        // EIP-8025: bytecodes deployed by CREATE in the current block are not required
-        // in the witness — the verifier derives them from execution.
         if (self.deployed_codes.get(code_hash)) |code| return code;
         return DbError.InvalidWitness;
     }

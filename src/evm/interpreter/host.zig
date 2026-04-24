@@ -351,7 +351,7 @@ pub const Host = struct {
     }
 
     /// Load account with code. On any database error, marks ctx_error so the block is
-    /// rejected and returns null. Used by EXTCODESIZE and EXTCODECOPY.
+    /// rejected and returns null.
     pub fn codeInfo(self: *Host, addr: primitives.Address) ?struct { bytecode: bytecode_mod.Bytecode, code_hash: primitives.Hash, is_cold: bool } {
         const load = self.js_vtable.loadAccountWithCode(self.js, addr) catch {
             self.ctx_error.* = context_mod.ContextError.database_error;
@@ -371,7 +371,10 @@ pub const Host = struct {
     /// Uses accountInfo (no code loading) since EXTCODEHASH only needs the hash stored
     /// in the account — it does not read or execute the bytecode itself.
     pub fn extCodeHash(self: *Host, addr: primitives.Address) ?struct { hash: primitives.Hash, is_cold: bool, is_empty: bool } {
-        const load = self.js_vtable.accountInfo(self.js, addr) catch return null;
+        const load = self.js_vtable.accountInfo(self.js, addr) catch {
+            self.ctx_error.* = context_mod.ContextError.database_error;
+            return null;
+        };
         return .{
             .hash = load.info.code_hash,
             .is_cold = load.is_cold,

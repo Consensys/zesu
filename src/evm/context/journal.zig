@@ -1577,9 +1577,8 @@ pub fn Journal(comptime DB: type) type {
                         .AccountCreated => |data| {
                             if (self.inner.evm_state.get(data.address)) |acct| {
                                 if (acct.info.code) |code| {
-                                    const hash = acct.info.code_hash;
-                                    if (!std.mem.eql(u8, &hash, &primitives.KECCAK_EMPTY)) {
-                                        self.database.notifyCodeDeployed(hash, code);
+                                    if (!acct.info.isEmptyCodeHash()) {
+                                        self.database.notifyCodeDeployed(acct.info.code_hash, code);
                                     }
                                 }
                             }
