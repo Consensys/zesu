@@ -134,13 +134,28 @@ pub const WitnessDatabase = struct {
         return value;
     }
 
+    // ── hasNonZeroStorageForAddress ─────────────────────────────────────────
+
+    /// Returns true if the account's storage trie is non-empty (storage root != EMPTY_TRIE_HASH).
+    /// Used by CREATE/CREATE2 collision detection (EIP-7610 equivalent check in setupCreateCore).
+    pub fn hasNonZeroStorageForAddress(self: *const Self, address: primitives.Address) bool {
+        const account_state = mpt.verifyAccountIndexed(
+            self.pre_state_root,
+            address,
+            self.node_index,
+        ) catch return false;
+        const as = account_state orelse return false;
+        return !std.mem.eql(u8, &as.storage_root, &EMPTY_TRIE_HASH);
+    }
+
     // ── blockHash ───────────────────────────────────────────────────────────
 
     pub fn blockHash(self: *Self, number: u64) !primitives.Hash {
         for (self.block_hashes) |bhe| {
             if (bhe.number == number) return bhe.hash;
         }
-        return [_]u8{0} ** 32;
+        // Block hash not in witness — accessing a hash that wasn't provided is an invalid witness.
+        return DbError.InvalidWitness;
     }
 };
 
