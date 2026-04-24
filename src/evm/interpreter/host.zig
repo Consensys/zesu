@@ -350,9 +350,13 @@ pub const Host = struct {
         };
     }
 
-    /// Load account with code. Returns null on database error.
+    /// Load account with code. On any database error, marks ctx_error so the block is
+    /// rejected and returns null. Used by EXTCODESIZE and EXTCODECOPY.
     pub fn codeInfo(self: *Host, addr: primitives.Address) ?struct { bytecode: bytecode_mod.Bytecode, code_hash: primitives.Hash, is_cold: bool } {
-        const load = self.js_vtable.loadAccountWithCode(self.js, addr) catch return null;
+        const load = self.js_vtable.loadAccountWithCode(self.js, addr) catch {
+            self.ctx_error.* = context_mod.ContextError.database_error;
+            return null;
+        };
         const acc = load.data;
         const code = if (acc.info.code) |c| c else bytecode_mod.Bytecode.new();
         const code_hash = acc.info.code_hash;
@@ -363,16 +367,15 @@ pub const Host = struct {
         };
     }
 
-    /// Load account for external code hash. Returns null on database error.
+    /// Load account for EXTCODEHASH. Returns null on database error.
+    /// Uses accountInfo (no code loading) since EXTCODEHASH only needs the hash stored
+    /// in the account — it does not read or execute the bytecode itself.
     pub fn extCodeHash(self: *Host, addr: primitives.Address) ?struct { hash: primitives.Hash, is_cold: bool, is_empty: bool } {
-        const load = self.js_vtable.loadAccountWithCode(self.js, addr) catch return null;
-        const acct = load.data;
-        const hash = acct.info.code_hash;
-        const is_empty = acct.isLoadedAsNotExistingNotTouched();
+        const load = self.js_vtable.accountInfo(self.js, addr) catch return null;
         return .{
-            .hash = hash,
+            .hash = load.info.code_hash,
             .is_cold = load.is_cold,
-            .is_empty = is_empty,
+            .is_empty = load.is_empty,
         };
     }
 
@@ -648,6 +651,7 @@ fn setupCallCore(js: anytype, host: *Host, inputs: CallInputs, frame_depth: usiz
 
     // 3. Load callee code + EIP-7702 delegation
     const callee_load = js.loadAccountWithCode(inputs.callee) catch {
+        host.ctx_error.* = context_mod.ContextError.database_error;
         return .{ .failed = CallResult.failure(inputs.gas_limit) };
     };
     const callee_acc = callee_load.data;
@@ -662,6 +666,7 @@ fn setupCallCore(js: anytype, host: *Host, inputs: CallInputs, frame_depth: usiz
                 gas_costs.WARM_ACCOUNT_ACCESS;
             code = if (del_load.data.info.code) |del_code| del_code else bytecode_mod.Bytecode.new();
         } else |_| {
+            host.ctx_error.* = context_mod.ContextError.database_error;
             code = bytecode_mod.Bytecode.new();
         }
     }
