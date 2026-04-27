@@ -512,11 +512,6 @@ pub fn runFixture(
                 ) catch |err| {
                     if (expect_exception) {
                         stats.passed += 1;
-                        if (!quiet) {
-                            std.debug.print("PASS  {s}  {s}  {s}[{}]\n", .{
-                                rel_path, test_name, fork, post_idx,
-                            });
-                        }
                     } else {
                         stats.failed += 1;
                         std.debug.print("FAIL  {s}  {s}  {s}[{}]  (transition: {})\n", .{
@@ -543,11 +538,6 @@ pub fn runFixture(
                     std.mem.eql(u8, &got_logs, &exp_logs))
                 {
                     stats.passed += 1;
-                    if (!quiet) {
-                        std.debug.print("PASS  {s}  {s}  {s}[{}]\n", .{
-                            rel_path, test_name, fork, post_idx,
-                        });
-                    }
                 } else {
                     stats.failed += 1;
                     std.debug.print("FAIL  {s}  {s}  {s}[{}]\n", .{

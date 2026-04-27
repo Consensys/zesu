@@ -23,7 +23,6 @@ pub fn main(init: std.process.Init) !void {
 
     var fixtures_dir: []const u8 = "spec-tests/fixtures/zkevm/blockchain_tests";
     var single_file: ?[]const u8 = null;
-    var quiet: bool = false;
     var stop_on_fail: bool = false;
 
     var i: usize = 1;
@@ -35,8 +34,6 @@ pub fn main(init: std.process.Init) !void {
         } else if (std.mem.eql(u8, arg, "--file") and i + 1 < args.len) {
             i += 1;
             single_file = args[i];
-        } else if (std.mem.eql(u8, arg, "-q")) {
-            quiet = true;
         } else if (std.mem.eql(u8, arg, "-x")) {
             stop_on_fail = true;
         }
@@ -46,7 +43,7 @@ pub fn main(init: std.process.Init) !void {
     var failed: u64 = 0;
 
     if (single_file) |path| {
-        processFile(init.io, allocator, path, quiet, &passed, &failed) catch {};
+        processFile(init.io, allocator, path, &passed, &failed) catch {};
     } else {
         var dir = std.Io.Dir.cwd().openDir(init.io, fixtures_dir, .{ .iterate = true }) catch |err| {
             std.debug.print("error: cannot open fixtures dir '{s}': {}\n", .{ fixtures_dir, err });
@@ -80,7 +77,7 @@ pub fn main(init: std.process.Init) !void {
             defer allocator.free(full_path);
 
             const failed_before = failed;
-            processFile(init.io, allocator, full_path, quiet, &passed, &failed) catch {};
+            processFile(init.io, allocator, full_path, &passed, &failed) catch {};
             if (stop_on_fail and failed > failed_before) break;
         }
     }
@@ -95,7 +92,7 @@ pub fn main(init: std.process.Init) !void {
     if (failed > 0) std.process.exit(1);
 }
 
-fn processFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8, quiet: bool, passed: *u64, failed: *u64) !void {
+fn processFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8, passed: *u64, failed: *u64) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -165,7 +162,7 @@ fn processFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8, quiet
                 break :blk null;
             };
 
-            const block_ok = runBlock(alloc, test_name, block_idx, in_hex, out_hex, expected_tx_root_hex, fork_name, quiet) catch |err| blk: {
+            const block_ok = runBlock(alloc, test_name, block_idx, in_hex, out_hex, expected_tx_root_hex, fork_name) catch |err| blk: {
                 std.debug.print("FAIL {s}[{}]  error: {}\n", .{ test_name, block_idx, err });
                 break :blk false;
             };
@@ -183,7 +180,6 @@ fn runBlock(
     out_hex: []const u8,
     expected_tx_root_hex: ?[]const u8,
     fork_name: ?[]const u8,
-    quiet: bool,
 ) !bool {
     const in_stripped = if (std.mem.startsWith(u8, in_hex, "0x")) in_hex[2..] else in_hex;
     const out_stripped = if (std.mem.startsWith(u8, out_hex, "0x")) out_hex[2..] else out_hex;
@@ -249,6 +245,5 @@ fn runBlock(
         return false;
     }
 
-    if (!quiet) std.debug.print("PASS {s}[{}]\n", .{ test_name, block_idx });
     return true;
 }
