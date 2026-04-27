@@ -1,8 +1,9 @@
 //! WitnessDatabase: stateless EVM database backed by a pre-built MPT NodeIndex.
 //!
 //! Serves account/storage reads via live MPT proof verification (O(log n) per read
-//! via NodeIndex O(1) node lookups). Contract bytecodes are served via linear scan
-//! over the (bounded) codes pool.
+//! via NodeIndex O(1) node lookups). Contract bytecodes are served from two sources:
+//! the witness codes pool (linear scan over a bounded set) and the deployed_codes map
+//! (O(1) lookup for bytecodes produced by CREATE during the current block).
 //!
 //! Used directly as the DB type in Context(WitnessDatabase):
 //!   var ctx = context.Context(WitnessDatabase).new(witness_db, spec);
@@ -18,7 +19,8 @@ const mpt = @import("mpt");
 const types = @import("executor_types");
 
 pub const DbError = error{
-    /// MPT proof verification failed — witness is inconsistent with state root.
+    /// Witness is incomplete or inconsistent: a required account proof, bytecode,
+    /// or block hash was not provided. The block must be rejected.
     InvalidWitness,
 };
 
@@ -41,6 +43,9 @@ pub const WitnessDatabase = struct {
     pre_state_root: primitives.Hash,
     codes: []const []const u8,
     block_hashes: []const types.BlockHashEntry,
+    /// Bytecodes deployed by CREATE in the current block, keyed by code hash.
+    /// EIP-8025: verifier derives these from execution, so they need not be in the witness.
+    deployed_codes: std.AutoHashMap(primitives.Hash, bytecode.Bytecode),
 
     const Self = @This();
 
@@ -51,16 +56,25 @@ pub const WitnessDatabase = struct {
         codes: []const []const u8,
         block_hashes: []const types.BlockHashEntry,
     ) Self {
-        _ = alloc;
         return .{
             .node_index = node_index,
             .pre_state_root = pre_state_root,
             .codes = codes,
             .block_hashes = block_hashes,
+            .deployed_codes = std.AutoHashMap(primitives.Hash, bytecode.Bytecode).init(alloc),
         };
     }
 
-    pub fn deinit(_: *Self) void {}
+    pub fn deinit(self: *Self) void {
+        self.deployed_codes.deinit();
+    }
+
+    /// Called by the journal after each committed transaction to register bytecodes
+    /// deployed by CREATE in that transaction. Allows codeByHash to serve them without
+    /// requiring them in the witness (EIP-8025: the verifier derives them from execution).
+    pub fn notifyCodeDeployed(self: *Self, code_hash: primitives.Hash, code: bytecode.Bytecode) !void {
+        try self.deployed_codes.put(code_hash, code);
+    }
 
     // ── basic ───────────────────────────────────────────────────────────────
 
@@ -104,7 +118,8 @@ pub const WitnessDatabase = struct {
                 return bytecode.Bytecode.newLegacy(code_bytes);
             }
         }
-        return bytecode.Bytecode.new();
+        if (self.deployed_codes.get(code_hash)) |code| return code;
+        return DbError.InvalidWitness;
     }
 
     // ── storage ─────────────────────────────────────────────────────────────
