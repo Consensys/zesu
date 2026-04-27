@@ -1567,6 +1567,26 @@ pub fn Journal(comptime DB: type) type {
         }
 
         pub fn commitTx(self: *@This()) void {
+            // Notify DB of bytecodes deployed by CREATE in this transaction. We scan
+            // the journal (O(tx ops)) rather than all of evm_state (O(loaded accounts)).
+            // Reverted AccountCreated entries are already removed from the journal by
+            // checkpointRevert, so only committed CREATEs appear here.
+            if (comptime @hasDecl(DB, "notifyCodeDeployed")) {
+                for (self.inner.journal.items) |entry| {
+                    switch (entry) {
+                        .AccountCreated => |data| {
+                            if (self.inner.evm_state.get(data.address)) |acct| {
+                                if (acct.info.code) |code| {
+                                    if (!acct.info.isEmptyCodeHash()) {
+                                        self.database.notifyCodeDeployed(acct.info.code_hash, code) catch {};
+                                    }
+                                }
+                            }
+                        },
+                        else => {},
+                    }
+                }
+            }
             self.inner.commitTx();
         }
 
