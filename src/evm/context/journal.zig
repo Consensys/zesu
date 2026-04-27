@@ -1578,7 +1578,7 @@ pub fn Journal(comptime DB: type) type {
                             if (self.inner.evm_state.get(data.address)) |acct| {
                                 if (acct.info.code) |code| {
                                     if (!acct.info.isEmptyCodeHash()) {
-                                        self.database.notifyCodeDeployed(acct.info.code_hash, code);
+                                        self.database.notifyCodeDeployed(acct.info.code_hash, code) catch {};
                                     }
                                 }
                             }

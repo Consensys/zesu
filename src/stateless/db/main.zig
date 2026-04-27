@@ -72,8 +72,8 @@ pub const WitnessDatabase = struct {
     /// Called by the journal after each committed transaction to register bytecodes
     /// deployed by CREATE in that transaction. Allows codeByHash to serve them without
     /// requiring them in the witness (EIP-8025: the verifier derives them from execution).
-    pub fn notifyCodeDeployed(self: *Self, code_hash: primitives.Hash, code: bytecode.Bytecode) void {
-        self.deployed_codes.put(code_hash, code) catch unreachable;
+    pub fn notifyCodeDeployed(self: *Self, code_hash: primitives.Hash, code: bytecode.Bytecode) !void {
+        try self.deployed_codes.put(code_hash, code);
     }
 
     // ── basic ───────────────────────────────────────────────────────────────
