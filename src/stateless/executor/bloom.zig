@@ -4,6 +4,7 @@
 /// 3 pairs of bytes (bytes 0-1, 2-3, 4-5) and interpret each pair as a
 /// big-endian 11-bit index into the 2048-bit field.
 const std = @import("std");
+const accel = @import("accelerators");
 
 pub const Bloom = [256]u8;
 pub const ZERO: Bloom = [_]u8{0} ** 256;
@@ -11,7 +12,7 @@ pub const ZERO: Bloom = [_]u8{0} ** 256;
 /// Add a byte sequence to the bloom filter.
 pub fn add(bloom: *Bloom, data: []const u8) void {
     var hash: [32]u8 = undefined;
-    std.crypto.hash.sha3.Keccak256.hash(data, &hash, .{});
+    accel.keccak256(data, &hash);
 
     inline for (0..3) |i| {
         // Ethereum uses big-endian 11-bit indexing: high byte first (matches geth)

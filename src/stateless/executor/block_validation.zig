@@ -1,6 +1,7 @@
 const types = @import("executor_types");
 const primitives = @import("primitives");
 const bal = @import("./bal.zig");
+const accel = @import("accelerators");
 
 // EIP-1559 / gas limit constants
 const MIN_GAS_LIMIT: u64 = 5_000;
@@ -196,9 +197,7 @@ pub fn validatePostExecution(
                     const last_code = decl.code_changes[decl.code_changes.len - 1];
                     var last_code_hash: primitives.Hash = primitives.KECCAK_EMPTY;
                     if (last_code.len > 0) {
-                        var h = std.crypto.hash.sha3.Keccak256.init(.{});
-                        h.update(last_code);
-                        h.final(&last_code_hash);
+                        accel.keccak256(last_code, &last_code_hash);
                     }
                     if (!std.mem.eql(u8, &last_code_hash, &comp.post_code_hash)) return error.InvalidBlockAccessList;
                 } else {
