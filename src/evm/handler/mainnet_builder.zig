@@ -626,12 +626,14 @@ fn executeIterative(
     }
     try frames.append(alloc_mod.get(), .{ .interp = root_interp, .cause = null });
 
+    // Build instruction table once: spec is constant for the lifetime of a block.
+    const schedule = interpreter_mod.protocol_schedule.makeInstructionTable(root_interp.runtime_flags.spec_id);
+
     while (true) {
         const frame = &frames.items[frames.items.len - 1];
         const spec = frame.interp.runtime_flags.spec_id;
-        const schedule = interpreter_mod.protocol_schedule.ProtocolSchedule.forSpec(spec);
 
-        _ = frame.interp.runWithHost(&schedule.instructions, host);
+        _ = frame.interp.runWithHost(&schedule, host);
 
         if (frame.interp.pending != .none) {
             // Sub-frame needed. The opcode already called setupCall/setupCreate and stored
