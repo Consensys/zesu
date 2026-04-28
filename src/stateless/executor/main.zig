@@ -455,11 +455,15 @@ pub fn executeStatelessInput(
         try header_infos.append(alloc, .{ .number = number, .parent_hash = parent_hash, .hash = hash });
     }
 
-    // Validate header chain: headers must be provided in ascending block-number order
-    // (each header's keccak256 must equal the next header's parent_hash), and the
-    // last header's hash must match EP.parent_hash (chain anchor). Out-of-order
-    // headers (e.g. reversed) break the hash-linkage check and are rejected.
+    // Validate header chain: each header's keccak256 must equal the next header's
+    // parent_hash, and the most-recent header's hash must match EP.parent_hash.
+    // Sort by block number first since witnesses may arrive in any order.
     if (header_infos.items.len > 0) {
+        std.mem.sort(HeaderInfo, header_infos.items, {}, struct {
+            fn lt(_: void, a: HeaderInfo, b: HeaderInfo) bool {
+                return a.number < b.number;
+            }
+        }.lt);
         for (0..header_infos.items.len - 1) |k| {
             if (!std.mem.eql(u8, &header_infos.items[k].hash, &header_infos.items[k + 1].parent_hash)) {
                 return error.InvalidWitness;
