@@ -2,134 +2,36 @@ const std = @import("std");
 const primitives = @import("primitives");
 const InstructionContext = @import("../instruction_context.zig").InstructionContext;
 const gas_costs = @import("../gas_costs.zig");
+const helpers = @import("helpers.zig");
+
+const U = primitives.U256;
+
+fn addOp(a: U, b: U) U { return a +% b; }
+fn subOp(a: U, b: U) U { return a -% b; }
+fn mulOp(a: U, b: U) U { return a *% b; }
+fn divOp(a: U, b: U) U { return if (b != 0) a / b else 0; }
+fn modOp(a: U, b: U) U { return if (b != 0) a % b else 0; }
 
 /// ADD opcode (0x01): a + b (wrapping mod 2^256)
-/// Stack: [a, b] -> [a + b]   Static gas: 3 (VERYLOW, charged by dispatch)
-pub fn opAdd(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(2)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    stack.shrinkUnsafe(1);
-    stack.setTopUnsafe().* = a +% b;
-}
-
+pub const opAdd = helpers.makeBinaryOp(addOp);
 /// SUB opcode (0x03): a - b (wrapping mod 2^256)
-/// Stack: [a, b] -> [a - b]   Static gas: 3 (VERYLOW)
-pub fn opSub(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(2)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    stack.shrinkUnsafe(1);
-    stack.setTopUnsafe().* = a -% b;
-}
-
+pub const opSub = helpers.makeBinaryOp(subOp);
 /// MUL opcode (0x02): a * b (wrapping mod 2^256)
-/// Stack: [a, b] -> [a * b]   Static gas: 5 (LOW)
-pub fn opMul(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(2)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    stack.shrinkUnsafe(1);
-    stack.setTopUnsafe().* = a *% b;
-}
-
-/// DIV opcode (0x04): a / b (unsigned, division by zero returns 0)
-/// Stack: [a, b] -> [a / b]   Static gas: 5 (LOW)
-pub fn opDiv(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(2)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    stack.shrinkUnsafe(1);
-    stack.setTopUnsafe().* = if (b != 0) a / b else 0;
-}
-
-/// SDIV opcode (0x05): a / b (signed, division by zero returns 0)
-/// Stack: [a, b] -> [a / b]   Static gas: 5 (LOW)
-pub fn opSdiv(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(2)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    stack.shrinkUnsafe(1);
-    stack.setTopUnsafe().* = sdiv(a, b);
-}
-
-/// MOD opcode (0x06): a % b (unsigned, mod by zero returns 0)
-/// Stack: [a, b] -> [a % b]   Static gas: 5 (LOW)
-pub fn opMod(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(2)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    stack.shrinkUnsafe(1);
-    stack.setTopUnsafe().* = if (b != 0) a % b else 0;
-}
-
-/// SMOD opcode (0x07): a % b (signed, mod by zero returns 0)
-/// Stack: [a, b] -> [a % b]   Static gas: 5 (LOW)
-pub fn opSmod(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(2)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    stack.shrinkUnsafe(1);
-    stack.setTopUnsafe().* = smod(a, b);
-}
-
-/// ADDMOD opcode (0x08): (a + b) % N with u257 intermediate
-/// Stack: [a, b, N] -> [(a + b) % N]   Static gas: 8 (MID)
-pub fn opAddmod(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(3)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    const n = stack.peekUnsafe(2);
-    stack.shrinkUnsafe(2);
-    stack.setTopUnsafe().* = addmod(a, b, n);
-}
-
-/// MULMOD opcode (0x09): (a * b) % N with u512 intermediate
-/// Stack: [a, b, N] -> [(a * b) % N]   Static gas: 8 (MID)
-pub fn opMulmod(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(3)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const a = stack.peekUnsafe(0);
-    const b = stack.peekUnsafe(1);
-    const n = stack.peekUnsafe(2);
-    stack.shrinkUnsafe(2);
-    stack.setTopUnsafe().* = mulmod(a, b, n);
-}
+pub const opMul = helpers.makeBinaryOp(mulOp);
+/// DIV opcode (0x04): a / b (unsigned, 0 if b == 0)
+pub const opDiv = helpers.makeBinaryOp(divOp);
+/// SDIV opcode (0x05): a / b (signed, 0 if b == 0)
+pub const opSdiv = helpers.makeBinaryOp(sdiv);
+/// MOD opcode (0x06): a % b (unsigned, 0 if b == 0)
+pub const opMod = helpers.makeBinaryOp(modOp);
+/// SMOD opcode (0x07): a % b (signed, 0 if b == 0)
+pub const opSmod = helpers.makeBinaryOp(smod);
+/// ADDMOD opcode (0x08): (a + b) % N
+pub const opAddmod = helpers.makeTernaryOp(addmod);
+/// MULMOD opcode (0x09): (a * b) % N
+pub const opMulmod = helpers.makeTernaryOp(mulmod);
+/// SIGNEXTEND opcode (0x0B): sign extend value from byte position
+pub const opSignextend = helpers.makeBinaryOp(signextend);
 
 /// EXP opcode (0x0A): base ^ exponent (mod 2^256)
 /// Stack: [base, exponent] -> [base ^ exponent]
@@ -156,20 +58,6 @@ pub fn opExp(ctx: *InstructionContext) void {
     const base = stack.peekUnsafe(0);
     stack.shrinkUnsafe(1);
     stack.setTopUnsafe().* = expMod256(base, exponent);
-}
-
-/// SIGNEXTEND opcode (0x0B): Sign extend value from byte position
-/// Stack: [byte_pos, value] -> [extended_value]   Static gas: 5 (LOW)
-pub fn opSignextend(ctx: *InstructionContext) void {
-    const stack = &ctx.interpreter.stack;
-    if (!stack.hasItems(2)) {
-        ctx.interpreter.halt(.stack_underflow);
-        return;
-    }
-    const byte_pos = stack.peekUnsafe(0);
-    const value = stack.peekUnsafe(1);
-    stack.shrinkUnsafe(1);
-    stack.setTopUnsafe().* = signextend(byte_pos, value);
 }
 
 // --- Helpers ---
