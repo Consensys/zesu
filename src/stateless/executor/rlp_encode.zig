@@ -3,6 +3,7 @@
 /// Supports encoding individual values and lists. All encoded items are
 /// heap-allocated slices; callers own the memory (use an arena for easy cleanup).
 const std = @import("std");
+const accel = @import("accelerators");
 
 // ─── Core encoders ────────────────────────────────────────────────────────────
 
@@ -135,6 +136,6 @@ fn bigEndianLength(n: usize, buf: *[8]u8) []const u8 {
 
 pub fn keccak256(data: []const u8) [32]u8 {
     var hash: [32]u8 = undefined;
-    std.crypto.hash.sha3.Keccak256.hash(data, &hash, .{});
+    accel.keccak256(data, &hash);
     return hash;
 }

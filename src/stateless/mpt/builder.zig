@@ -6,6 +6,7 @@
 //! Reference: Ethereum Yellow Paper Appendix C.
 const std = @import("std");
 const nibbles = @import("nibbles.zig");
+const accel = @import("accelerators");
 
 pub const EMPTY_TRIE_HASH: [32]u8 = [_]u8{
     0x56, 0xe8, 0x1f, 0x17, 0x1b, 0xcc, 0x55, 0xa6,
@@ -219,6 +220,6 @@ fn bigEndianMinimal(n: usize, buf: *[8]u8) []const u8 {
 
 pub fn keccak256(data: []const u8) [32]u8 {
     var hash: [32]u8 = undefined;
-    std.crypto.hash.sha3.Keccak256.hash(data, &hash, .{});
+    accel.keccak256(data, &hash);
     return hash;
 }
