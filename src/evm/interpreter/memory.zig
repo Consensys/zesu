@@ -148,29 +148,6 @@ pub const Memory = struct {
         }
     }
 
-    /// Load a U256 from memory (big-endian)
-    pub fn loadU256(self: Memory, offset: usize) primitives.U256 {
-        if (offset + 32 > self.buffer.items.len) {
-            // Pad with zeros if beyond memory
-            var bytes: [32]u8 = [_]u8{0} ** 32;
-            const available = self.buffer.items.len - offset;
-            if (available > 0) {
-                @memcpy(bytes[0..available], self.buffer.items[offset .. offset + available]);
-            }
-            return @byteSwap(@as(primitives.U256, @bitCast(bytes)));
-        }
-
-        var bytes: [32]u8 = undefined;
-        @memcpy(&bytes, self.buffer.items[offset .. offset + 32]);
-        return @byteSwap(@as(primitives.U256, @bitCast(bytes)));
-    }
-
-    /// Store a U256 to memory (big-endian)
-    pub fn storeU256(self: *Memory, offset: usize, value: primitives.U256) !void {
-        const bytes: [32]u8 = @bitCast(@byteSwap(value));
-        try self.set(offset, &bytes);
-    }
-
     /// Load a U128 from memory
     pub fn loadU128(self: Memory, offset: usize) primitives.U128 {
         if (offset + 16 > self.buffer.items.len) {
