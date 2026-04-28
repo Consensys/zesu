@@ -40,7 +40,6 @@ pub const CreateResult = host_module.CreateResult;
 pub const CreateInputs = @import("interpreter_action.zig").CreateInputs;
 pub const opcodes = @import("opcodes/main.zig");
 pub const protocol_schedule = @import("protocol_schedule.zig");
-pub const ProtocolSchedule = protocol_schedule.ProtocolSchedule;
 pub const gas_costs = @import("gas_costs.zig");
 
 // Constants
