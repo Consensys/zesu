@@ -498,7 +498,10 @@ pub const Host = struct {
     }
 
     // -----------------------------------------------------------------------
-    // Synchronous helpers (used by tests and call_integration_tests)
+    // TEST PATH — synchronous helpers used by unit tests only.
+    // Production execution goes through executeIterative in mainnet_builder.zig,
+    // which builds the instruction table once before the frame loop.
+    // These helpers rebuild the table per call; do not use on hot paths.
     // -----------------------------------------------------------------------
 
     /// Synchronous CALL — runs a complete sub-frame inline. For use in tests and

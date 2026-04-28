@@ -301,13 +301,9 @@ pub const Frame = struct {
     /// Execute frame with host access for full EVM semantics.
     pub fn execute(self: *Frame, ctx: anytype) !FrameResult {
         const DB = @TypeOf(ctx.*).DatabaseType;
-        const schedule = interpreter.protocol_schedule.ProtocolSchedule.forSpec(
-            self.interpreter.runtime_flags.spec_id,
-        );
-
         var host = interpreter.Host.init(DB, ctx, &self.precompiles.precompiles);
 
-        _ = self.interpreter.runWithHost(&schedule.instructions, &host);
+        _ = self.interpreter.runWithHost(&self.instructions.table, &host);
 
         const gas_used = self.interpreter.gas.getSpent();
         const gas_refunded = self.interpreter.gas.refunded;
