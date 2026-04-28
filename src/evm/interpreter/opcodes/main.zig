@@ -33,6 +33,12 @@ pub const opSgt = comparison.opSgt;
 pub const opEq = comparison.opEq;
 pub const opIsZero = comparison.opIsZero;
 
+// Comptime op factories (binary/unary/ternary)
+pub const helpers = @import("helpers.zig");
+pub const makeBinaryOp = helpers.makeBinaryOp;
+pub const makeUnaryOp = helpers.makeUnaryOp;
+pub const makeTernaryOp = helpers.makeTernaryOp;
+
 // Stack operations — comptime generators for PUSH/DUP/SWAP families
 pub const stack = @import("stack.zig");
 pub const opPop = stack.opPop;
