@@ -39,7 +39,6 @@ pub const CallResult = host_module.CallResult;
 pub const CreateResult = host_module.CreateResult;
 pub const CreateInputs = @import("interpreter_action.zig").CreateInputs;
 pub const opcodes = @import("opcodes/main.zig");
-pub const instruction_table = @import("instruction_table.zig");
 pub const protocol_schedule = @import("protocol_schedule.zig");
 pub const gas_costs = @import("gas_costs.zig");
 
@@ -52,6 +51,7 @@ test {
     _ = @import("opcodes/arithmetic.zig");
     _ = @import("opcodes/arithmetic_tests.zig");
     _ = @import("opcodes/host_ops_tests.zig");
+    _ = @import("opcodes/environment_tests.zig");
 }
 
 /// Main interpreter module for EVM bytecode execution
