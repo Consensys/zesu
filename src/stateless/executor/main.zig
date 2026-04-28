@@ -383,7 +383,7 @@ pub fn executeBlockStateless(
     ctx.cfg.disable_base_fee = (env.base_fee == null);
 
     const empty_pre_alloc = std.AutoHashMapUnmanaged(types.Address, types.AllocAccount).empty;
-    const result = try transition_mod.transitionWithContext(
+    var result = try transition_mod.transitionWithContext(
         alloc,
         &ctx,
         empty_pre_alloc,
@@ -398,6 +398,18 @@ pub fn executeBlockStateless(
     // for a block whose header was not included in the witness). Per EIP-8025, such blocks
     // are invalid even if the state root happens to match.
     if (ctx.ctx_error != .ok) return error.InvalidWitness;
+    // Pre-populate pre_storage_root from the execution-time cache so the post-execution
+    // output phase (computeStorageRootIndexed) skips redundant account trie walks.
+    {
+        var alloc_it = result.alloc.iterator();
+        while (alloc_it.next()) |entry| {
+            if (entry.value_ptr.pre_storage_root == null) {
+                if (ctx.getDb().storage_root_cache.get(entry.key_ptr.*)) |sr| {
+                    entry.value_ptr.pre_storage_root = sr;
+                }
+            }
+        }
+    }
     var access_log = ctx.journaled_state.takeAccessLog();
     defer access_log.deinit();
     const accessed = try buildAccessedEntries(alloc, access_log, result.alloc, result.deleted_accounts);

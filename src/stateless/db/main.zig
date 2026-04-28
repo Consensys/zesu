@@ -46,6 +46,12 @@ pub const WitnessDatabase = struct {
     /// Bytecodes deployed by CREATE in the current block, keyed by code hash.
     /// EIP-8025: verifier derives these from execution, so they need not be in the witness.
     deployed_codes: std.AutoHashMap(primitives.Hash, bytecode.Bytecode),
+    /// Cache of address → storage_root populated by basic() during execution.
+    /// Eliminates redundant account trie walks in storage() and in the post-execution
+    /// output phase (computeStorageRootIndexed).  Accounts absent from pre-state are
+    /// cached as EMPTY_TRIE_HASH so the output phase can skip verifyAccountIndexed for
+    /// them too (delta-update from an empty root is equivalent to scratch-build).
+    storage_root_cache: std.AutoHashMap(primitives.Address, primitives.Hash),
 
     const Self = @This();
 
@@ -62,11 +68,13 @@ pub const WitnessDatabase = struct {
             .codes = codes,
             .block_hashes = block_hashes,
             .deployed_codes = std.AutoHashMap(primitives.Hash, bytecode.Bytecode).init(alloc),
+            .storage_root_cache = std.AutoHashMap(primitives.Address, primitives.Hash).init(alloc),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.deployed_codes.deinit();
+        self.storage_root_cache.deinit();
     }
 
     /// Called by the journal after each committed transaction to register bytecodes
@@ -90,7 +98,11 @@ pub const WitnessDatabase = struct {
             else => return DbError.InvalidWitness,
         };
 
-        const as = account_state orelse return null;
+        const as = account_state orelse {
+            self.storage_root_cache.put(address, EMPTY_TRIE_HASH) catch {};
+            return null;
+        };
+        self.storage_root_cache.put(address, as.storage_root) catch {};
         return state.AccountInfo{
             .balance = as.balance,
             .nonce = as.nonce,
@@ -129,17 +141,19 @@ pub const WitnessDatabase = struct {
         address: primitives.Address,
         index: primitives.StorageKey,
     ) !primitives.StorageValue {
-        const account_state = mpt.verifyAccountIndexed(
-            self.pre_state_root,
-            address,
-            self.node_index,
-        ) catch |err| switch (err) {
-            // Witness doesn't include proof for this account — treat storage as 0.
-            error.InvalidProof => return 0,
-            else => return DbError.InvalidWitness,
+        const storage_root = self.storage_root_cache.get(address) orelse blk: {
+            const account_state = mpt.verifyAccountIndexed(
+                self.pre_state_root,
+                address,
+                self.node_index,
+            ) catch |err| switch (err) {
+                error.InvalidProof => break :blk EMPTY_TRIE_HASH,
+                else => return DbError.InvalidWitness,
+            };
+            const root = if (account_state) |as| as.storage_root else EMPTY_TRIE_HASH;
+            self.storage_root_cache.put(address, root) catch {};
+            break :blk root;
         };
-
-        const storage_root = if (account_state) |as| as.storage_root else EMPTY_TRIE_HASH;
         const slot = u256ToHash(index);
         const value = mpt.verifyStorageIndexed(storage_root, slot, self.node_index) catch |err| switch (err) {
             error.InvalidProof => return 0,
@@ -154,6 +168,9 @@ pub const WitnessDatabase = struct {
     /// Returns true if the account's storage trie is non-empty (storage root != EMPTY_TRIE_HASH).
     /// Used by CREATE/CREATE2 collision detection (EIP-7610 equivalent check in setupCreateCore).
     pub fn hasNonZeroStorageForAddress(self: *const Self, address: primitives.Address) bool {
+        if (self.storage_root_cache.get(address)) |root| {
+            return !std.mem.eql(u8, &root, &EMPTY_TRIE_HASH);
+        }
         const account_state = mpt.verifyAccountIndexed(
             self.pre_state_root,
             address,
