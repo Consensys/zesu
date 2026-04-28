@@ -1,7 +1,6 @@
 const std = @import("std");
 const primitives = @import("primitives");
 const bytecode_mod = @import("bytecode");
-const precompile = @import("precompile");
 const gas_costs = @import("gas_costs.zig");
 const interpreter_mod = @import("interpreter.zig");
 const Interpreter = interpreter_mod.Interpreter;
@@ -12,21 +11,6 @@ const opcodes = @import("opcodes/main.zig");
 // `protocol_schedule.InstructionTable` continue to compile unchanged.
 pub const InstructionEntry = interpreter_mod.InstructionEntry;
 pub const InstructionTable = interpreter_mod.InstructionTable;
-
-/// Full protocol configuration for one hardfork: dispatch table + precompile set.
-pub const ProtocolSchedule = struct {
-    spec: primitives.SpecId,
-    instructions: InstructionTable,
-    precompiles: precompile.Precompiles,
-
-    pub fn forSpec(spec: primitives.SpecId) ProtocolSchedule {
-        return .{
-            .spec = spec,
-            .instructions = makeInstructionTable(spec),
-            .precompiles = makePrecompiles(spec),
-        };
-    }
-};
 
 // ---------------------------------------------------------------------------
 // Instruction table construction
@@ -262,13 +246,4 @@ fn applyAmsterdamChanges(table: *InstructionTable) void {
     table[bytecode_mod.DUPN] = entry(opcodes.opDupN, gas_costs.G_VERYLOW);
     table[bytecode_mod.SWAPN] = entry(opcodes.opSwapN, gas_costs.G_VERYLOW);
     table[bytecode_mod.EXCHANGE] = entry(opcodes.opExchange, gas_costs.G_VERYLOW);
-}
-
-// ---------------------------------------------------------------------------
-// Precompile set construction
-// ---------------------------------------------------------------------------
-
-pub fn makePrecompiles(spec: primitives.SpecId) precompile.Precompiles {
-    const precompile_spec = precompile.PrecompileSpecId.fromSpec(spec);
-    return precompile.Precompiles.forSpec(precompile_spec);
 }
