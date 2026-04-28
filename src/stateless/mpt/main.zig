@@ -106,16 +106,16 @@ pub fn verifyProof(
     // Tracks the next expected node: either a 32-byte hash (pool lookup)
     // or an inline RLP encoding (embedded directly in the parent node).
     const ExpectedRef = union(enum) {
-        hash: [32]u8,
+        hash: *const [32]u8,
         inline_node: []const u8,
     };
-    var expected: ExpectedRef = .{ .hash = root_hash };
+    var expected: ExpectedRef = .{ .hash = &root_hash };
     var pos: usize = 0;
 
     while (true) {
         // Resolve the current node.
         const node_rlp: []const u8 = switch (expected) {
-            .hash => |h| findNode(pool, h) orelse return error.InvalidProof,
+            .hash => |h| findNode(pool, h.*) orelse return error.InvalidProof,
             .inline_node => |inl| inl,
         };
 
@@ -185,15 +185,15 @@ pub fn verifyProofVerbose(
     nibbles.bytesToNibbles(&key_hash, &key_nibbles);
 
     const ExpectedRef = union(enum) {
-        hash: [32]u8,
+        hash: *const [32]u8,
         inline_node: []const u8,
     };
-    var expected: ExpectedRef = .{ .hash = root_hash };
+    var expected: ExpectedRef = .{ .hash = &root_hash };
     var pos: usize = 0;
 
     while (true) {
         const node_rlp: []const u8 = switch (expected) {
-            .hash => |h| findNode(pool, h) orelse return error.InvalidProof,
+            .hash => |h| findNode(pool, h.*) orelse return error.InvalidProof,
             .inline_node => |inl| inl,
         };
 
@@ -208,7 +208,7 @@ pub fn verifyProofVerbose(
                 const nibble = key_nibbles[pos];
                 pos += 1;
                 switch (expected) {
-                    .hash => |h| writer.print("        branch    0x{x}  nibble={x}\n", .{ h, nibble }) catch {},
+                    .hash => |h| writer.print("        branch    0x{x}  nibble={x}\n", .{ h.*, nibble }) catch {},
                     .inline_node => writer.print("        branch    (inline)  nibble={x}\n", .{nibble}) catch {},
                 }
                 switch (b.children[nibble]) {
@@ -225,7 +225,7 @@ pub fn verifyProofVerbose(
                 const prefix_nibs = path_buf[0..hp.len];
                 if (pos + prefix_nibs.len > 64) return error.InvalidProof;
                 switch (expected) {
-                    .hash => |h| writer.print("        extension 0x{x}  skip={d}\n", .{ h, hp.len }) catch {},
+                    .hash => |h| writer.print("        extension 0x{x}  skip={d}\n", .{ h.*, hp.len }) catch {},
                     .inline_node => writer.print("        extension (inline)  skip={d}\n", .{hp.len}) catch {},
                 }
                 if (!std.mem.eql(u8, prefix_nibs, key_nibbles[pos .. pos + prefix_nibs.len]))
@@ -246,7 +246,7 @@ pub fn verifyProofVerbose(
                 if (suffix_nibs.len != 64 - pos) return null;
                 if (!std.mem.eql(u8, suffix_nibs, key_nibbles[pos..])) return null;
                 switch (expected) {
-                    .hash => |h| writer.print("        leaf      0x{x}\n", .{h}) catch {},
+                    .hash => |h| writer.print("        leaf      0x{x}\n", .{h.*}) catch {},
                     .inline_node => writer.print("        leaf      (inline)\n", .{}) catch {},
                 }
                 return lf.value;
@@ -342,15 +342,15 @@ pub fn verifyProofIndexed(
     nibbles.bytesToNibbles(&key_hash, &key_nibbles);
 
     const ExpectedRef = union(enum) {
-        hash: [32]u8,
+        hash: *const [32]u8,
         inline_node: []const u8,
     };
-    var expected: ExpectedRef = .{ .hash = root_hash };
+    var expected: ExpectedRef = .{ .hash = &root_hash };
     var pos: usize = 0;
 
     while (true) {
         const node_rlp: []const u8 = switch (expected) {
-            .hash => |h| findNodeInIndex(index, h) orelse return error.InvalidProof,
+            .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
             .inline_node => |inl| inl,
         };
 
@@ -733,7 +733,7 @@ pub fn updateStorageChainedIndexed(
 fn updResolveRefExIndexed(ref: node.NodeRef, index: *const NodeIndex) MptError![]const u8 {
     return switch (ref) {
         .empty => &.{0x80},
-        .hash => |h| findNodeInIndex(index, h) orelse return error.InvalidProof,
+        .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
         .inline_node => |b| b,
     };
 }
@@ -1265,7 +1265,7 @@ fn updNodeEx(
 fn updResolveRef(ref: node.NodeRef, pool: []const []const u8) MptError![]const u8 {
     return switch (ref) {
         .empty => &.{0x80},
-        .hash => |h| findNode(pool, h) orelse return error.InvalidProof,
+        .hash => |h| findNode(pool, h.*) orelse return error.InvalidProof,
         .inline_node => |b| b,
     };
 }
@@ -1273,7 +1273,7 @@ fn updResolveRef(ref: node.NodeRef, pool: []const []const u8) MptError![]const u
 fn updResolveRefEx(ref: node.NodeRef, pool: []const []const u8, extra_items: []const []const u8) MptError![]const u8 {
     return switch (ref) {
         .empty => &.{0x80},
-        .hash => |h| findNode(pool, h) orelse findNode(extra_items, h) orelse return error.InvalidProof,
+        .hash => |h| findNode(pool, h.*) orelse findNode(extra_items, h.*) orelse return error.InvalidProof,
         .inline_node => |b| b,
     };
 }
@@ -1281,7 +1281,7 @@ fn updResolveRefEx(ref: node.NodeRef, pool: []const []const u8, extra_items: []c
 fn updRefEnc(alloc: std.mem.Allocator, ref: node.NodeRef) ![]const u8 {
     return switch (ref) {
         .empty => alloc.dupe(u8, &.{0x80}),
-        .hash => |h| updRlpBytes(alloc, &h),
+        .hash => |h| updRlpBytes(alloc, h),
         .inline_node => |b| b,
     };
 }

@@ -275,13 +275,19 @@ fn buildAccessedEntries(
         });
     }
 
-    std.mem.sort(types.AccessedEntry, entries.items, {}, struct {
-        pub fn lessThan(_: void, a: types.AccessedEntry, b: types.AccessedEntry) bool {
-            return std.mem.lessThan(u8, &a.address, &b.address);
+    const SortEntry = struct { addr: [20]u8, idx: u32 };
+    const sort_buf = try alloc.alloc(SortEntry, entries.items.len);
+    defer alloc.free(sort_buf);
+    for (entries.items, 0..) |e, i| sort_buf[i] = .{ .addr = e.address, .idx = @intCast(i) };
+    std.mem.sort(SortEntry, sort_buf, {}, struct {
+        fn lt(_: void, a: SortEntry, b: SortEntry) bool {
+            return std.mem.lessThan(u8, &a.addr, &b.addr);
         }
-    }.lessThan);
-
-    return entries.toOwnedSlice(alloc);
+    }.lt);
+    const sorted = try alloc.alloc(types.AccessedEntry, entries.items.len);
+    for (sort_buf, 0..) |sb, j| sorted[j] = entries.items[sb.idx];
+    entries.deinit(alloc);
+    return sorted;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

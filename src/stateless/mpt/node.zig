@@ -10,7 +10,7 @@ const rlp = @import("rlp.zig");
 /// A reference to a child node within a proof.
 pub const NodeRef = union(enum) {
     /// 32-byte keccak256 hash of the child node (linked to next proof element).
-    hash: [32]u8,
+    hash: *const [32]u8,
     /// Short (< 32 byte) child node inlined directly in the parent.
     inline_node: []const u8,
     /// Empty / null slot (branch child absent).
@@ -118,9 +118,7 @@ fn decodeNodeRef(item: rlp.RlpItem, raw: []const u8) error{InvalidNode}!NodeRef 
         .bytes => |b| {
             if (b.len == 0) return .{ .empty = {} };
             if (b.len == 32) {
-                var hash: [32]u8 = undefined;
-                @memcpy(&hash, b);
-                return .{ .hash = hash };
+                return .{ .hash = b[0..32] };
             }
             // Short encoding: inline node (< 32 bytes of raw RLP).
             return .{ .inline_node = b };
@@ -167,7 +165,7 @@ test "decodeNode extension with hash child" {
     try std.testing.expect(node.extension.child == .hash);
     var expected_hash: [32]u8 = undefined;
     @memset(&expected_hash, 0xaa);
-    try std.testing.expectEqualSlices(u8, &expected_hash, &node.extension.child.hash);
+    try std.testing.expectEqualSlices(u8, &expected_hash, node.extension.child.hash);
 }
 
 test "decodeNode branch all empty" {
@@ -203,7 +201,7 @@ test "decodeNode branch with hash child at slot 0" {
     try std.testing.expect(node.branch.children[0] == .hash);
     var expected: [32]u8 = undefined;
     @memset(&expected, 0xbb);
-    try std.testing.expectEqualSlices(u8, &expected, &node.branch.children[0].hash);
+    try std.testing.expectEqualSlices(u8, &expected, node.branch.children[0].hash);
     for (node.branch.children[1..]) |child| {
         try std.testing.expect(child == .empty);
     }
