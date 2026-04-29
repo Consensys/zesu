@@ -48,9 +48,8 @@ pub const WitnessDatabase = struct {
     deployed_codes: std.AutoHashMap(primitives.Hash, bytecode.Bytecode),
     /// Cache of address → storage_root populated by basic() during execution.
     /// Eliminates redundant account trie walks in storage() and in the post-execution
-    /// output phase (computeStorageRootIndexed).  Accounts absent from pre-state are
-    /// cached as EMPTY_TRIE_HASH so the output phase can skip verifyAccountIndexed for
-    /// them too (delta-update from an empty root is equivalent to scratch-build).
+    /// batch update (storageRootFor). Accounts absent from pre-state are cached as
+    /// EMPTY_TRIE_HASH so the batch output phase skips verifyAccountIndexed for them.
     storage_root_cache: std.AutoHashMap(primitives.Address, primitives.Hash),
 
     const Self = @This();
@@ -61,7 +60,7 @@ pub const WitnessDatabase = struct {
         pre_state_root: primitives.Hash,
         codes: []const []const u8,
         block_hashes: []const types.BlockHashEntry,
-    ) Self {
+    ) !Self {
         return .{
             .node_index = node_index,
             .pre_state_root = pre_state_root,
@@ -107,7 +106,7 @@ pub const WitnessDatabase = struct {
             .balance = as.balance,
             .nonce = as.nonce,
             .code_hash = as.code_hash,
-            .code = null, // served on demand via codeByHash
+            .code = null,
         };
     }
 
@@ -120,8 +119,6 @@ pub const WitnessDatabase = struct {
         for (self.codes) |code_bytes| {
             const h = mpt.keccak256(code_bytes);
             if (std.mem.eql(u8, &h, &code_hash)) {
-                // Detect EIP-7702 delegation pointer: 0xEF 0x01 0x00 + 20-byte address (23 bytes total).
-                // Must return Bytecode.eip7702 so that setupCall detects it and loads the delegation target.
                 if (code_bytes.len == 23 and code_bytes[0] == 0xEF and code_bytes[1] == 0x01 and code_bytes[2] == 0x00) {
                     var delegation_addr: primitives.Address = [_]u8{0} ** 20;
                     @memcpy(&delegation_addr, code_bytes[3..23]);
@@ -159,14 +156,11 @@ pub const WitnessDatabase = struct {
             error.InvalidProof => return 0,
             else => return DbError.InvalidWitness,
         };
-
         return value;
     }
 
     // ── hasNonZeroStorageForAddress ─────────────────────────────────────────
 
-    /// Returns true if the account's storage trie is non-empty (storage root != EMPTY_TRIE_HASH).
-    /// Used by CREATE/CREATE2 collision detection (EIP-7610 equivalent check in setupCreateCore).
     pub fn hasNonZeroStorageForAddress(self: *const Self, address: primitives.Address) bool {
         if (self.storage_root_cache.get(address)) |root| {
             return !std.mem.eql(u8, &root, &EMPTY_TRIE_HASH);
@@ -186,8 +180,17 @@ pub const WitnessDatabase = struct {
         for (self.block_hashes) |bhe| {
             if (bhe.number == number) return bhe.hash;
         }
-        // Block hash not in witness — accessing a hash that wasn't provided is an invalid witness.
         return DbError.InvalidWitness;
+    }
+
+    // ── storageRootFor ──────────────────────────────────────────────────────
+
+    /// Returns the pre-state storage root for an address from the execution-time cache.
+    /// Called by the post-execution batch trie update to avoid re-walking the account trie.
+    /// Returns null for accounts not loaded during execution; batch update falls back to
+    /// building the storage trie from scratch (correct for new accounts with no pre-state).
+    pub fn storageRootFor(self: *const Self, address: primitives.Address) ?primitives.Hash {
+        return self.storage_root_cache.get(address);
     }
 };
 
