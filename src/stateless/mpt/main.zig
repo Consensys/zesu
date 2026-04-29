@@ -55,38 +55,27 @@ pub fn keccak256(data: []const u8) [32]u8 {
 
 // ─── NodeIndex ─────────────────────────────────────────────────────────────────
 
-/// An entry in the NodeIndex: raw RLP bytes plus a pre-decoded node.
-/// All slices in `decoded` point into `rlp` (zero-copy), so `rlp` must outlive the entry.
-pub const IndexEntry = struct {
-    rlp: []const u8,
-    decoded: node.DecodedNode,
-};
-
-/// Pre-computed hash → IndexEntry map built once from the witness node pool.
-/// Stores both raw RLP and the pre-decoded node so verifyProofIndexed can skip
-/// re-decoding shared ancestor nodes (e.g. the trie root) on every lookup.
+/// Pre-computed hash → node-bytes map built once from the witness node pool.
 /// Use buildNodeIndex() to populate, then pass to the *Indexed verification
 /// functions for O(1) node lookups instead of O(N·keccak) linear scans.
-pub const NodeIndex = std.AutoHashMap([32]u8, IndexEntry);
+pub const NodeIndex = std.AutoHashMap([32]u8, []const u8);
 
 /// Build a NodeIndex from a flat node pool.
-/// Each entry maps keccak256(node_bytes) → IndexEntry{rlp, decoded}.
-/// Nodes that fail to decode are silently skipped (they will error at proof time).
+/// Each entry maps keccak256(node_bytes) → node_bytes.
 /// The returned map is owned by the caller; call deinit() when done.
 pub fn buildNodeIndex(allocator: std.mem.Allocator, pool: []const []const u8) !NodeIndex {
     var index = NodeIndex.init(allocator);
     try index.ensureTotalCapacity(@intCast(pool.len));
     for (pool) |node_bytes| {
         const h = keccak256(node_bytes);
-        const decoded = node.decodeNode(node_bytes) catch continue;
-        index.putAssumeCapacity(h, .{ .rlp = node_bytes, .decoded = decoded });
+        index.putAssumeCapacity(h, node_bytes);
     }
     return index;
 }
 
-/// O(1) index lookup — returns a pointer into the map so decoded fields can be used directly.
-fn findNodeInIndex(index: *const NodeIndex, hash: primitives.Hash) ?*const IndexEntry {
-    return index.getPtr(hash);
+/// O(1) index lookup — used by the indexed API for large witness pools.
+fn findNodeInIndex(index: *const NodeIndex, hash: primitives.Hash) ?[]const u8 {
+    return index.get(hash);
 }
 
 // ─── findNode ──────────────────────────────────────────────────────────────────
@@ -364,18 +353,14 @@ pub fn verifyProofIndexed(
     var pos: usize = 0;
 
     while (true) {
-        // For hash refs, use the pre-decoded node from the index (avoids re-decoding
-        // shared ancestor nodes such as the trie root on every lookup).
-        // For inline nodes they are not in the index and must be decoded on the fly.
-        const decoded: node.DecodedNode = switch (expected) {
-            .hash => |h| blk: {
-                const entry = findNodeInIndex(index, h.*) orelse return error.InvalidProof;
-                break :blk entry.decoded;
-            },
-            .inline_node => |inl| node.decodeNode(inl) catch |err| switch (err) {
-                error.InvalidRlp => return error.InvalidRlp,
-                error.InvalidNode => return error.InvalidNode,
-            },
+        const node_rlp: []const u8 = switch (expected) {
+            .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
+            .inline_node => |inl| inl,
+        };
+
+        const decoded = node.decodeNode(node_rlp) catch |err| switch (err) {
+            error.InvalidRlp => return error.InvalidRlp,
+            error.InvalidNode => return error.InvalidNode,
         };
 
         switch (decoded) {
@@ -692,21 +677,19 @@ pub fn updateAccountChainedIndexed(
         if (account_rlp) |val| {
             const leaf_rlp = try updMakeLeaf(alloc, &key_nibs, val);
             const h = keccak256(leaf_rlp);
-            const decoded = node.decodeNode(leaf_rlp) catch return error.InvalidNode;
-            try index.put(h, .{ .rlp = leaf_rlp, .decoded = decoded });
+            try index.put(h, leaf_rlp);
             root.* = h;
         }
         return;
     }
 
-    const root_bytes = (findNodeInIndex(index, root.*) orelse return error.InvalidProof).rlp;
+    const root_bytes = findNodeInIndex(index, root.*) orelse return error.InvalidProof;
     const new_root_rlp = try updNodeExIndexed(alloc, root_bytes, &key_nibs, account_rlp, index);
     root.* = if (new_root_rlp.len == 1 and new_root_rlp[0] == 0x80)
         EMPTY_TRIE_HASH
     else blk: {
         const h = keccak256(new_root_rlp);
-        const decoded = node.decodeNode(new_root_rlp) catch return error.InvalidNode;
-        try index.put(h, .{ .rlp = new_root_rlp, .decoded = decoded });
+        try index.put(h, new_root_rlp);
         break :blk h;
     };
 }
@@ -732,21 +715,19 @@ pub fn updateStorageChainedIndexed(
         if (new_val_enc) |val| {
             const leaf_rlp = try updMakeLeaf(alloc, &key_nibs, val);
             const h = keccak256(leaf_rlp);
-            const decoded = node.decodeNode(leaf_rlp) catch return error.InvalidNode;
-            try index.put(h, .{ .rlp = leaf_rlp, .decoded = decoded });
+            try index.put(h, leaf_rlp);
             root.* = h;
         }
         return;
     }
 
-    const root_bytes = (findNodeInIndex(index, root.*) orelse return error.InvalidProof).rlp;
+    const root_bytes = findNodeInIndex(index, root.*) orelse return error.InvalidProof;
     const new_root_rlp = try updNodeExIndexed(alloc, root_bytes, &key_nibs, new_val_enc, index);
     root.* = if (new_root_rlp.len == 1 and new_root_rlp[0] == 0x80)
         EMPTY_TRIE_HASH
     else blk: {
         const h = keccak256(new_root_rlp);
-        const decoded = node.decodeNode(new_root_rlp) catch return error.InvalidNode;
-        try index.put(h, .{ .rlp = new_root_rlp, .decoded = decoded });
+        try index.put(h, new_root_rlp);
         break :blk h;
     };
 }
@@ -774,7 +755,7 @@ pub fn batchUpdateIndexed(
     const root_rlp: []const u8 = if (std.mem.eql(u8, &root, &EMPTY_TRIE_HASH))
         &.{0x80}
     else
-        (findNodeInIndex(index, root) orelse return error.InvalidProof).rlp;
+        findNodeInIndex(index, root) orelse return error.InvalidProof;
     const new_root_rlp = try batchUpdateNodeIndexed(alloc, root_rlp, sorted_changes, 0, index);
     return commitRoot(new_root_rlp, index);
 }
@@ -782,8 +763,7 @@ pub fn batchUpdateIndexed(
 fn commitRoot(new_root_rlp: []const u8, index: *NodeIndex) (MptError || error{OutOfMemory})![32]u8 {
     if (new_root_rlp.len == 1 and new_root_rlp[0] == 0x80) return EMPTY_TRIE_HASH;
     const h = keccak256(new_root_rlp);
-    const decoded = node.decodeNode(new_root_rlp) catch return error.InvalidNode;
-    try index.put(h, .{ .rlp = new_root_rlp, .decoded = decoded });
+    try index.put(h, new_root_rlp);
     return h;
 }
 
@@ -834,7 +814,7 @@ fn batchUpdateNodeIndexed(
 
                 const child_rlp: []const u8 = switch (b.children[nib]) {
                     .empty => &.{0x80},
-                    .hash => |h| (findNodeInIndex(index, h.*) orelse return error.InvalidProof).rlp,
+                    .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
                     .inline_node => |il| il,
                 };
                 const new_child_rlp = try batchUpdateNodeIndexed(alloc, child_rlp, changes[i..j], depth + 1, index);
@@ -884,7 +864,7 @@ fn batchUpdateNodeIndexed(
 fn updResolveRefExIndexed(ref: node.NodeRef, index: *const NodeIndex) MptError![]const u8 {
     return switch (ref) {
         .empty => &.{0x80},
-        .hash => |h| (findNodeInIndex(index, h.*) orelse return error.InvalidProof).rlp,
+        .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
         .inline_node => |b| b,
     };
 }
@@ -1470,7 +1450,7 @@ fn collapseIndexed(
         if (child_enc.len == 33 and child_enc[0] == 0xa0) {
             var h: [32]u8 = undefined;
             @memcpy(&h, child_enc[1..33]);
-            break :blk (findNodeInIndex(index, h) orelse return error.InvalidProof).rlp;
+            break :blk findNodeInIndex(index, h) orelse return error.InvalidProof;
         }
         break :blk child_enc;
     };
@@ -1612,8 +1592,7 @@ fn updHashOrEmbedEx(alloc: std.mem.Allocator, node_rlp: []const u8, extra: *std.
 fn updHashOrEmbedExIndexed(alloc: std.mem.Allocator, node_rlp: []const u8, index: *NodeIndex) ![]const u8 {
     if (node_rlp.len < 32) return node_rlp;
     const h = keccak256(node_rlp);
-    const decoded = node.decodeNode(node_rlp) catch return error.InvalidNode;
-    try index.put(h, .{ .rlp = node_rlp, .decoded = decoded });
+    try index.put(h, node_rlp);
     return updRlpBytes(alloc, &h);
 }
 
