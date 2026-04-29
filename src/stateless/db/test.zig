@@ -144,7 +144,7 @@ const ALLOC = std.testing.allocator;
 /// Caller must call `index.deinit()` when done.
 fn makeWdb(w: input.StateWitness, index: *mpt.NodeIndex) !db_mod.WitnessDatabase {
     index.* = try mpt.buildNodeIndex(ALLOC, w.nodes);
-    return db_mod.WitnessDatabase.init(ALLOC, index, w.state_root, w.codes, &.{});
+    return try db_mod.WitnessDatabase.init(ALLOC, index, w.state_root, w.codes, &.{});
 }
 
 // ─── Test 1: basic — account found in pool ────────────────────────────────────
