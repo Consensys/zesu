@@ -87,19 +87,24 @@ pub fn computeReceiptsRoot(
     return mpt_builder.trieRoot(alloc, items);
 }
 
-/// stateRoot for stateless execution: applies account changes as MPT delta updates
-/// against `pre_state_root`, using a pre-built NodeIndex for O(1) node lookups.
+/// stateRoot for stateless execution: batch-applies all account changes in one sorted pass,
+/// visiting each shared branch node exactly once instead of once per account update.
 ///
-/// This correctly handles a witness that only contains touched accounts — the untouched
-/// accounts remain implicit in the trie via their existing hash references.
+/// `pre_storage_roots` is the WitnessDatabase, used to look up pre-state storage roots
+/// for accounts that had storage before this block (avoids redundant trie walks).
 pub fn computeStateRootDelta(
     alloc: std.mem.Allocator,
     pre_state_root: [32]u8,
     alloc_map: std.AutoHashMapUnmanaged(types.Address, types.AllocAccount),
     deleted_accounts: []const types.Address,
     index: *mpt.NodeIndex,
+    pre_storage_roots: anytype,
 ) ![32]u8 {
-    var state_root = pre_state_root;
+    const total = alloc_map.count() + deleted_accounts.len;
+    if (total == 0) return pre_state_root;
+
+    const changes = try alloc.alloc(mpt.BatchChange, total);
+    var n: usize = 0;
 
     var it = alloc_map.iterator();
     while (it.next()) |entry| {
@@ -107,14 +112,13 @@ pub fn computeStateRootDelta(
         const acct = entry.value_ptr.*;
         const addr_key = mpt_builder.keccak256(&addr);
 
-        const storage_root = try computeStorageRootIndexed(alloc, addr, pre_state_root, acct, index);
-        // Use the authoritative code_hash from EVM state when available (set by
-        // extractPostState).  Falls back to computing from code bytes for paths that
-        // do not go through extractPostState (blockchain-test runner pre-alloc).
+        const pre_storage_root: ?[32]u8 = acct.pre_storage_root orelse
+            pre_storage_roots.storageRootFor(addr);
+
+        const storage_root = try computeStorageRootBatch(alloc, acct, pre_storage_root, index);
         const code_hash: [32]u8 = acct.code_hash orelse
             if (acct.code.len > 0) mpt_builder.keccak256(acct.code) else KECCAK_EMPTY;
 
-        // EIP-161: delete empty accounts (nonce=0, balance=0, no code, empty storage).
         const has_code = !std.mem.eql(u8, &code_hash, &KECCAK_EMPTY);
         const account_rlp: ?[]const u8 = if (acct.nonce == 0 and
             acct.balance == 0 and
@@ -124,16 +128,22 @@ pub fn computeStateRootDelta(
         else
             try encodeAccountRlp(alloc, acct.nonce, acct.balance, storage_root, code_hash);
 
-        try mpt.updateAccountChainedIndexed(alloc, &state_root, addr_key, account_rlp, index);
+        changes[n] = .{ .key = addr_key, .value = account_rlp };
+        n += 1;
     }
 
-    // Remove selfdestructed accounts from the trie.
     for (deleted_accounts) |addr| {
-        const addr_key = mpt_builder.keccak256(&addr);
-        try mpt.updateAccountChainedIndexed(alloc, &state_root, addr_key, null, index);
+        changes[n] = .{ .key = mpt_builder.keccak256(&addr), .value = null };
+        n += 1;
     }
 
-    return state_root;
+    std.mem.sort(mpt.BatchChange, changes[0..n], {}, struct {
+        fn lt(_: void, a: mpt.BatchChange, b: mpt.BatchChange) bool {
+            return std.mem.lessThan(u8, &a.key, &b.key);
+        }
+    }.lt);
+
+    return mpt.batchUpdateIndexed(alloc, pre_state_root, changes[0..n], index);
 }
 
 /// stateRoot: state trie, keys = keccak256(address), values = account RLP.
@@ -167,48 +177,39 @@ pub fn computeStateRoot(
     return mpt_builder.trieRoot(alloc, items);
 }
 
-/// Indexed storage root: delta-updates via pre-built NodeIndex (O(1) pool lookups).
-/// When `account.pre_storage_root` is null (stateless path — pre_alloc is empty), auto-fetches
-/// the storage root from the account trie using `pre_state_root` and `addr`.
-fn computeStorageRootIndexed(
+/// Batch storage root update: sorts all slot changes and applies them in one pass.
+/// Replaces the old two-pass (inserts-then-deletes) sequential approach.
+fn computeStorageRootBatch(
     alloc: std.mem.Allocator,
-    addr: types.Address,
-    pre_state_root: [32]u8,
     account: types.AllocAccount,
+    pre_storage_root: ?[32]u8,
     index: *mpt.NodeIndex,
 ) ![32]u8 {
-    const old_root: ?[32]u8 = account.pre_storage_root orelse blk: {
-        // Stateless path: auto-fetch storage_root from the account trie.
-        const acct_state = mpt.verifyAccountIndexed(pre_state_root, addr, index) catch {
-            break :blk null;
-        };
-        if (acct_state) |as| {
-            break :blk as.storage_root;
-        }
-        break :blk null; // account not in pre-state → no prior storage
-    };
+    const old_root = pre_storage_root orelse return computeStorageRootScratch(alloc, account);
 
-    if (old_root) |root_val| {
-        var root = root_val;
-        // MPT chained updates require inserts (non-zero) before deletes (zero).
-        // Two passes over the map avoid a sort, keeping this O(n) with no comparisons.
-        var it = account.storage.iterator();
-        while (it.next()) |entry| {
-            if (entry.value_ptr.* == 0) continue;
-            var slot_key: [32]u8 = undefined;
-            std.mem.writeInt(u256, &slot_key, entry.key_ptr.*, .big);
-            try mpt.updateStorageChainedIndexed(alloc, &root, slot_key, entry.value_ptr.*, index);
-        }
-        it = account.storage.iterator();
-        while (it.next()) |entry| {
-            if (entry.value_ptr.* != 0) continue;
-            var slot_key: [32]u8 = undefined;
-            std.mem.writeInt(u256, &slot_key, entry.key_ptr.*, .big);
-            try mpt.updateStorageChainedIndexed(alloc, &root, slot_key, 0, index);
-        }
-        return root;
+    const count = account.storage.count();
+    if (count == 0) return old_root;
+
+    const changes = try alloc.alloc(mpt.BatchChange, count);
+    var n: usize = 0;
+    var it = account.storage.iterator();
+    while (it.next()) |entry| {
+        var slot_key: [32]u8 = undefined;
+        std.mem.writeInt(u256, &slot_key, entry.key_ptr.*, .big);
+        const slot_hash = mpt.keccak256(&slot_key);
+        const val: u256 = entry.value_ptr.*;
+        const val_enc: ?[]const u8 = if (val == 0) null else try rlp.encodeU256(alloc, val);
+        changes[n] = .{ .key = slot_hash, .value = val_enc };
+        n += 1;
     }
-    return computeStorageRootScratch(alloc, account);
+
+    std.mem.sort(mpt.BatchChange, changes[0..n], {}, struct {
+        fn lt(_: void, a: mpt.BatchChange, b: mpt.BatchChange) bool {
+            return std.mem.lessThan(u8, &a.key, &b.key);
+        }
+    }.lt);
+
+    return mpt.batchUpdateIndexed(alloc, old_root, changes[0..n], index);
 }
 
 /// Scratch-build storage root from all non-zero slots (no witness pool needed).

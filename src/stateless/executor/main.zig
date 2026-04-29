@@ -70,14 +70,23 @@ fn buildEnv(req: input.NewPayloadRequest, block_hashes: []types.BlockHashEntry, 
     };
 }
 
+/// Sentinel used by non-stateless executeBlock path: pre_alloc entries already carry
+/// pre_storage_root; storageRootFor is never called in practice.
+const NullStorageRoots = struct {
+    pub fn storageRootFor(_: *const @This(), _: types.Address) ?types.Hash {
+        return null;
+    }
+};
+
 fn finalizeOutput(
     alloc: std.mem.Allocator,
     pre_state_root: [32]u8,
     result: transition_mod.TransitionResult,
     node_index: *mpt.NodeIndex,
     spec: primitives.SpecId,
+    witness_db: anytype,
 ) !output.ProofOutput {
-    const post_state_root = try output_mod.computeStateRootDelta(alloc, pre_state_root, result.alloc, result.deleted_accounts, node_index);
+    const post_state_root = try output_mod.computeStateRootDelta(alloc, pre_state_root, result.alloc, result.deleted_accounts, node_index, witness_db);
     const receipts_root = try output_mod.computeReceiptsRoot(alloc, result.receipts);
     const receipts_data = try alloc.alloc(output.ReceiptData, result.receipts.len);
     for (result.receipts, 0..) |r, i| {
@@ -275,13 +284,19 @@ fn buildAccessedEntries(
         });
     }
 
-    std.mem.sort(types.AccessedEntry, entries.items, {}, struct {
-        pub fn lessThan(_: void, a: types.AccessedEntry, b: types.AccessedEntry) bool {
-            return std.mem.lessThan(u8, &a.address, &b.address);
+    const SortEntry = struct { addr: [20]u8, idx: u32 };
+    const sort_buf = try alloc.alloc(SortEntry, entries.items.len);
+    defer alloc.free(sort_buf);
+    for (entries.items, 0..) |e, i| sort_buf[i] = .{ .addr = e.address, .idx = @intCast(i) };
+    std.mem.sort(SortEntry, sort_buf, {}, struct {
+        fn lt(_: void, a: SortEntry, b: SortEntry) bool {
+            return std.mem.lessThan(u8, &a.addr, &b.addr);
         }
-    }.lessThan);
-
-    return entries.toOwnedSlice(alloc);
+    }.lt);
+    const sorted = try alloc.alloc(types.AccessedEntry, entries.items.len);
+    for (sort_buf, 0..) |sb, j| sorted[j] = entries.items[sb.idx];
+    entries.deinit(alloc);
+    return sorted;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -338,7 +353,8 @@ pub fn executeBlock(
     try block_validation.validateBlock(env, spec);
     const txs = try tx_decode.decodeTxsFromInput(alloc, ep.transactions);
     const result = try transition_mod.transition(alloc, pre_alloc, env, txs, spec, 1, fork_mod.blockReward(spec));
-    return finalizeOutput(alloc, pre_state_root, result, index, spec);
+    const null_roots = NullStorageRoots{};
+    return finalizeOutput(alloc, pre_state_root, result, index, spec, &null_roots);
 }
 
 /// Stateless block execution: serves all account/storage reads from the MPT witness
@@ -368,10 +384,10 @@ pub fn executeBlockStateless(
     try block_validation.validateBlock(env, spec);
     const txs = try tx_decode.decodeTxsFromInput(alloc, ep.transactions);
 
-    // Use WitnessDatabase directly as the EVM database type.
-    // All account/storage reads are served via live MPT proof verification.
-    const witness_db = db_mod.WitnessDatabase.init(alloc, node_index, pre_state_root, witness_codes, block_hashes);
-    var ctx = context_mod.Context(db_mod.WitnessDatabase).new(witness_db, spec);
+    var ctx = context_mod.Context(db_mod.WitnessDatabase).new(
+        try db_mod.WitnessDatabase.init(alloc, node_index, pre_state_root, witness_codes, block_hashes),
+        spec,
+    );
     ctx.block = transition_mod.buildBlockEnv(env, spec);
     ctx.cfg.chain_id = chain_id;
     ctx.cfg.disable_base_fee = (env.base_fee == null);
@@ -388,15 +404,12 @@ pub fn executeBlockStateless(
         fork_mod.blockReward(spec),
         public_keys,
     );
-    // A non-ok ctx_error means a DB operation failed during execution (e.g., BLOCKHASH
-    // for a block whose header was not included in the witness). Per EIP-8025, such blocks
-    // are invalid even if the state root happens to match.
     if (ctx.ctx_error != .ok) return error.InvalidWitness;
     var access_log = ctx.journaled_state.takeAccessLog();
     defer access_log.deinit();
     const accessed = try buildAccessedEntries(alloc, access_log, result.alloc, result.deleted_accounts);
     try block_validation.validatePostExecution(alloc, env, spec, result.cumulative_gas, result.blob_gas_used, ep.block_access_list, accessed);
-    return finalizeOutput(alloc, pre_state_root, result, node_index, spec);
+    return finalizeOutput(alloc, pre_state_root, result, node_index, spec, ctx.getDb());
 }
 
 /// High-level stateless execution from a fully-decoded StatelessInput.

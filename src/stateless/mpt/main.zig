@@ -106,16 +106,16 @@ pub fn verifyProof(
     // Tracks the next expected node: either a 32-byte hash (pool lookup)
     // or an inline RLP encoding (embedded directly in the parent node).
     const ExpectedRef = union(enum) {
-        hash: [32]u8,
+        hash: *const [32]u8,
         inline_node: []const u8,
     };
-    var expected: ExpectedRef = .{ .hash = root_hash };
+    var expected: ExpectedRef = .{ .hash = &root_hash };
     var pos: usize = 0;
 
     while (true) {
         // Resolve the current node.
         const node_rlp: []const u8 = switch (expected) {
-            .hash => |h| findNode(pool, h) orelse return error.InvalidProof,
+            .hash => |h| findNode(pool, h.*) orelse return error.InvalidProof,
             .inline_node => |inl| inl,
         };
 
@@ -185,15 +185,15 @@ pub fn verifyProofVerbose(
     nibbles.bytesToNibbles(&key_hash, &key_nibbles);
 
     const ExpectedRef = union(enum) {
-        hash: [32]u8,
+        hash: *const [32]u8,
         inline_node: []const u8,
     };
-    var expected: ExpectedRef = .{ .hash = root_hash };
+    var expected: ExpectedRef = .{ .hash = &root_hash };
     var pos: usize = 0;
 
     while (true) {
         const node_rlp: []const u8 = switch (expected) {
-            .hash => |h| findNode(pool, h) orelse return error.InvalidProof,
+            .hash => |h| findNode(pool, h.*) orelse return error.InvalidProof,
             .inline_node => |inl| inl,
         };
 
@@ -208,7 +208,7 @@ pub fn verifyProofVerbose(
                 const nibble = key_nibbles[pos];
                 pos += 1;
                 switch (expected) {
-                    .hash => |h| writer.print("        branch    0x{x}  nibble={x}\n", .{ h, nibble }) catch {},
+                    .hash => |h| writer.print("        branch    0x{x}  nibble={x}\n", .{ h.*, nibble }) catch {},
                     .inline_node => writer.print("        branch    (inline)  nibble={x}\n", .{nibble}) catch {},
                 }
                 switch (b.children[nibble]) {
@@ -225,7 +225,7 @@ pub fn verifyProofVerbose(
                 const prefix_nibs = path_buf[0..hp.len];
                 if (pos + prefix_nibs.len > 64) return error.InvalidProof;
                 switch (expected) {
-                    .hash => |h| writer.print("        extension 0x{x}  skip={d}\n", .{ h, hp.len }) catch {},
+                    .hash => |h| writer.print("        extension 0x{x}  skip={d}\n", .{ h.*, hp.len }) catch {},
                     .inline_node => writer.print("        extension (inline)  skip={d}\n", .{hp.len}) catch {},
                 }
                 if (!std.mem.eql(u8, prefix_nibs, key_nibbles[pos .. pos + prefix_nibs.len]))
@@ -246,7 +246,7 @@ pub fn verifyProofVerbose(
                 if (suffix_nibs.len != 64 - pos) return null;
                 if (!std.mem.eql(u8, suffix_nibs, key_nibbles[pos..])) return null;
                 switch (expected) {
-                    .hash => |h| writer.print("        leaf      0x{x}\n", .{h}) catch {},
+                    .hash => |h| writer.print("        leaf      0x{x}\n", .{h.*}) catch {},
                     .inline_node => writer.print("        leaf      (inline)\n", .{}) catch {},
                 }
                 return lf.value;
@@ -342,15 +342,15 @@ pub fn verifyProofIndexed(
     nibbles.bytesToNibbles(&key_hash, &key_nibbles);
 
     const ExpectedRef = union(enum) {
-        hash: [32]u8,
+        hash: *const [32]u8,
         inline_node: []const u8,
     };
-    var expected: ExpectedRef = .{ .hash = root_hash };
+    var expected: ExpectedRef = .{ .hash = &root_hash };
     var pos: usize = 0;
 
     while (true) {
         const node_rlp: []const u8 = switch (expected) {
-            .hash => |h| findNodeInIndex(index, h) orelse return error.InvalidProof,
+            .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
             .inline_node => |inl| inl,
         };
 
@@ -728,12 +728,139 @@ pub fn updateStorageChainedIndexed(
     };
 }
 
+// ─── Batch trie update ─────────────────────────────────────────────────────────
+
+/// A single keyed change for a batch trie update.
+/// `key` is the 32-byte trie key (keccak256(address) for state, keccak256(slot) for storage).
+/// `value` is the RLP-encoded value to insert, or null to delete.
+pub const BatchChange = struct {
+    key: [32]u8,
+    value: ?[]const u8,
+};
+
+/// Batch-update a trie with multiple pre-sorted changes, visiting each branch node once.
+/// `sorted_changes` must be sorted ascending by `key`.
+/// Returns the new root hash.
+pub fn batchUpdateIndexed(
+    alloc: std.mem.Allocator,
+    root: [32]u8,
+    sorted_changes: []const BatchChange,
+    index: *NodeIndex,
+) (MptError || error{OutOfMemory})![32]u8 {
+    if (sorted_changes.len == 0) return root;
+    const root_rlp: []const u8 = if (std.mem.eql(u8, &root, &EMPTY_TRIE_HASH))
+        &.{0x80}
+    else
+        findNodeInIndex(index, root) orelse return error.InvalidProof;
+    const new_root_rlp = try batchUpdateNodeIndexed(alloc, root_rlp, sorted_changes, 0, index);
+    return commitRoot(new_root_rlp, index);
+}
+
+fn commitRoot(new_root_rlp: []const u8, index: *NodeIndex) (MptError || error{OutOfMemory})![32]u8 {
+    if (new_root_rlp.len == 1 and new_root_rlp[0] == 0x80) return EMPTY_TRIE_HASH;
+    const h = keccak256(new_root_rlp);
+    try index.put(h, new_root_rlp);
+    return h;
+}
+
+inline fn nibbleAt(key: *const [32]u8, depth: u8) u8 {
+    return if (depth & 1 == 0) key[depth / 2] >> 4 else key[depth / 2] & 0x0f;
+}
+
+fn batchUpdateNodeIndexed(
+    alloc: std.mem.Allocator,
+    node_rlp: []const u8,
+    changes: []const BatchChange,
+    depth: u8,
+    index: *NodeIndex,
+) (MptError || error{OutOfMemory})![]const u8 {
+    if (changes.len == 1) {
+        var key_nibs: [64]u8 = undefined;
+        nibbles.bytesToNibbles(&changes[0].key, &key_nibs);
+        return updNodeExIndexed(alloc, node_rlp, key_nibs[depth..], changes[0].value, index);
+    }
+
+    // Empty subtree with multiple inserts: build sequentially.
+    if (node_rlp.len == 1 and node_rlp[0] == 0x80) {
+        var current = node_rlp;
+        for (changes) |ch| {
+            var key_nibs: [64]u8 = undefined;
+            nibbles.bytesToNibbles(&ch.key, &key_nibs);
+            current = try updNodeExIndexed(alloc, current, key_nibs[depth..], ch.value, index);
+        }
+        return current;
+    }
+
+    const decoded = node.decodeNode(node_rlp) catch |err| switch (err) {
+        error.InvalidRlp => return error.InvalidRlp,
+        error.InvalidNode => return error.InvalidNode,
+    };
+
+    switch (decoded) {
+        .branch => |b| {
+            var enc: [16][]const u8 = undefined;
+            for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
+
+            // Partition sorted changes by nibble at this depth; each run is contiguous.
+            var i: usize = 0;
+            while (i < changes.len) {
+                const nib = nibbleAt(&changes[i].key, depth);
+                var j = i + 1;
+                while (j < changes.len and nibbleAt(&changes[j].key, depth) == nib) j += 1;
+
+                const child_rlp: []const u8 = switch (b.children[nib]) {
+                    .empty => &.{0x80},
+                    .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
+                    .inline_node => |il| il,
+                };
+                const new_child_rlp = try batchUpdateNodeIndexed(alloc, child_rlp, changes[i..j], depth + 1, index);
+                enc[nib] = try updHashOrEmbedExIndexed(alloc, new_child_rlp, index);
+                i = j;
+            }
+
+            // Collapse branch if a deletion leaves exactly one non-empty child with no value.
+            // Only possible when at least one change is a deletion (value == null).
+            const has_deletion = for (changes) |ch| {
+                if (ch.value == null) break true;
+            } else false;
+
+            if (has_deletion and b.value.len == 0) {
+                var sole: i32 = -1;
+                for (enc, 0..) |ce, ci| {
+                    if (ce.len == 1 and ce[0] == 0x80) continue;
+                    if (sole >= 0) {
+                        sole = -2;
+                        break;
+                    }
+                    sole = @intCast(ci);
+                }
+                if (sole >= 0) return collapseIndexed(alloc, @intCast(sole), enc[@intCast(sole)], index);
+                if (sole == -1) return alloc.dupe(u8, &.{0x80});
+            }
+
+            return updEncodeBranch(alloc, &enc, b.value);
+        },
+
+        // Extension and leaf: fall back to sequential single-change updates.
+        // These cases are rare for multi-change batches (most shared ancestors are branches).
+        else => {
+            var current = node_rlp;
+            for (changes) |ch| {
+                var key_nibs: [64]u8 = undefined;
+                nibbles.bytesToNibbles(&ch.key, &key_nibs);
+                current = try updNodeExIndexed(alloc, current, key_nibs[depth..], ch.value, index);
+            }
+            return current;
+        },
+    }
+}
+
 /// Like updResolveRefEx but uses NodeIndex for O(1) lookups.
 /// New nodes created during updates are inserted into the same index, so a single lookup suffices.
 fn updResolveRefExIndexed(ref: node.NodeRef, index: *const NodeIndex) MptError![]const u8 {
     return switch (ref) {
         .empty => &.{0x80},
-        .hash => |h| findNodeInIndex(index, h) orelse return error.InvalidProof,
+        .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
         .inline_node => |b| b,
     };
 }
@@ -761,7 +888,7 @@ fn updNodeExIndexed(
         .branch => |b| {
             if (remaining.len == 0) {
                 var enc: [16][]const u8 = undefined;
-                for (b.children, 0..) |child, i| enc[i] = try updRefEnc(alloc, child);
+                for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
                 return updEncodeBranch(alloc, &enc, new_val orelse &.{});
             }
             const nib = remaining[0];
@@ -769,9 +896,8 @@ fn updNodeExIndexed(
             const new_child_rlp = try updNodeExIndexed(alloc, child_rlp, remaining[1..], new_val, index);
             const new_child_enc = try updHashOrEmbedExIndexed(alloc, new_child_rlp, index);
             var enc: [16][]const u8 = undefined;
-            for (b.children, 0..) |child, i| {
-                if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
-            }
+            for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
+            enc[nib] = new_child_enc;
 
             // Collapse branch if deletion leaves only one non-empty child with no value.
             // Canonical MPT requires replacing such a branch with an extension or leaf.
@@ -936,7 +1062,7 @@ fn updNode(
             if (remaining.len == 0) {
                 // Update branch value slot (rare in Ethereum storage tries)
                 var enc: [16][]const u8 = undefined;
-                for (b.children, 0..) |child, i| enc[i] = try updRefEnc(alloc, child);
+                for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
                 return updEncodeBranch(alloc, &enc, new_val orelse &.{});
             }
             const nib = remaining[0];
@@ -944,9 +1070,8 @@ fn updNode(
             const new_child_rlp = try updNode(alloc, child_rlp, remaining[1..], new_val, pool);
             const new_child_enc = try updHashOrEmbed(alloc, new_child_rlp);
             var enc: [16][]const u8 = undefined;
-            for (b.children, 0..) |child, i| {
-                if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
-            }
+            for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
+            enc[nib] = new_child_enc;
 
             // Collapse branch if deletion leaves only one non-empty child with no value.
             if (new_val == null and b.value.len == 0) {
@@ -1113,7 +1238,7 @@ fn updNodeEx(
         .branch => |b| {
             if (remaining.len == 0) {
                 var enc: [16][]const u8 = undefined;
-                for (b.children, 0..) |child, i| enc[i] = try updRefEnc(alloc, child);
+                for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
                 return updEncodeBranch(alloc, &enc, new_val orelse &.{});
             }
             const nib = remaining[0];
@@ -1121,9 +1246,8 @@ fn updNodeEx(
             const new_child_rlp = try updNodeEx(alloc, child_rlp, remaining[1..], new_val, pool, extra);
             const new_child_enc = try updHashOrEmbedEx(alloc, new_child_rlp, extra);
             var enc: [16][]const u8 = undefined;
-            for (b.children, 0..) |child, i| {
-                if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
-            }
+            for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
+            enc[nib] = new_child_enc;
 
             // Collapse branch if deletion leaves only one non-empty child with no value.
             if (new_val == null and b.value.len == 0) {
@@ -1265,7 +1389,7 @@ fn updNodeEx(
 fn updResolveRef(ref: node.NodeRef, pool: []const []const u8) MptError![]const u8 {
     return switch (ref) {
         .empty => &.{0x80},
-        .hash => |h| findNode(pool, h) orelse return error.InvalidProof,
+        .hash => |h| findNode(pool, h.*) orelse return error.InvalidProof,
         .inline_node => |b| b,
     };
 }
@@ -1273,7 +1397,7 @@ fn updResolveRef(ref: node.NodeRef, pool: []const []const u8) MptError![]const u
 fn updResolveRefEx(ref: node.NodeRef, pool: []const []const u8, extra_items: []const []const u8) MptError![]const u8 {
     return switch (ref) {
         .empty => &.{0x80},
-        .hash => |h| findNode(pool, h) orelse findNode(extra_items, h) orelse return error.InvalidProof,
+        .hash => |h| findNode(pool, h.*) orelse findNode(extra_items, h.*) orelse return error.InvalidProof,
         .inline_node => |b| b,
     };
 }
@@ -1281,8 +1405,23 @@ fn updResolveRefEx(ref: node.NodeRef, pool: []const []const u8, extra_items: []c
 fn updRefEnc(alloc: std.mem.Allocator, ref: node.NodeRef) ![]const u8 {
     return switch (ref) {
         .empty => alloc.dupe(u8, &.{0x80}),
-        .hash => |h| updRlpBytes(alloc, &h),
+        .hash => |h| updRlpBytes(alloc, h),
         .inline_node => |b| b,
+    };
+}
+
+/// Zero-copy variant of updRefEnc for unchanged branch children.
+/// Returns a slice directly into parent_rlp (hash/inline cases) or a static literal (empty).
+/// Caller must ensure parent_rlp is the exact node bytes from which `ref` was decoded.
+inline fn refEncSlice(parent_rlp: []const u8, ref: node.NodeRef) []const u8 {
+    return switch (ref) {
+        .empty => &.{0x80},
+        .inline_node => |b| b,
+        .hash => |h| blk: {
+            // h points 1 byte past the 0xa0 RLP prefix inside parent_rlp.
+            const off = @intFromPtr(h) - @intFromPtr(parent_rlp.ptr);
+            break :blk parent_rlp[off - 1 .. off + 32];
+        },
     };
 }
 
