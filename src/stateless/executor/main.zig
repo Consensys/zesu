@@ -384,8 +384,10 @@ pub fn executeBlockStateless(
     try block_validation.validateBlock(env, spec);
     const txs = try tx_decode.decodeTxsFromInput(alloc, ep.transactions);
 
-    var witness_db = try db_mod.WitnessDatabase.init(alloc, node_index, pre_state_root, witness_codes, block_hashes);
-    var ctx = context_mod.Context(db_mod.WitnessDatabase).new(witness_db, spec);
+    var ctx = context_mod.Context(db_mod.WitnessDatabase).new(
+        try db_mod.WitnessDatabase.init(alloc, node_index, pre_state_root, witness_codes, block_hashes),
+        spec,
+    );
     ctx.block = transition_mod.buildBlockEnv(env, spec);
     ctx.cfg.chain_id = chain_id;
     ctx.cfg.disable_base_fee = (env.base_fee == null);
@@ -407,7 +409,7 @@ pub fn executeBlockStateless(
     defer access_log.deinit();
     const accessed = try buildAccessedEntries(alloc, access_log, result.alloc, result.deleted_accounts);
     try block_validation.validatePostExecution(alloc, env, spec, result.cumulative_gas, result.blob_gas_used, ep.block_access_list, accessed);
-    return finalizeOutput(alloc, pre_state_root, result, node_index, spec, &witness_db);
+    return finalizeOutput(alloc, pre_state_root, result, node_index, spec, ctx.getDb());
 }
 
 /// High-level stateless execution from a fully-decoded StatelessInput.
