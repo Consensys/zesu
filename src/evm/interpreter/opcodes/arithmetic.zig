@@ -6,11 +6,21 @@ const helpers = @import("helpers.zig");
 
 const U = primitives.U256;
 
-fn addOp(a: U, b: U) U { return a +% b; }
-fn subOp(a: U, b: U) U { return a -% b; }
-fn mulOp(a: U, b: U) U { return a *% b; }
-fn divOp(a: U, b: U) U { return if (b != 0) a / b else 0; }
-fn modOp(a: U, b: U) U { return if (b != 0) a % b else 0; }
+fn addOp(a: U, b: U) U {
+    return a +% b;
+}
+fn subOp(a: U, b: U) U {
+    return a -% b;
+}
+fn mulOp(a: U, b: U) U {
+    return a *% b;
+}
+fn divOp(a: U, b: U) U {
+    return if (b != 0) a / b else 0;
+}
+fn modOp(a: U, b: U) U {
+    return if (b != 0) a % b else 0;
+}
 
 /// ADD opcode (0x01): a + b (wrapping mod 2^256)
 pub const opAdd = helpers.makeBinaryOp(addOp);
