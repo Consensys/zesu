@@ -5,10 +5,18 @@ const helpers = @import("helpers.zig");
 
 const U = primitives.U256;
 
-fn ltOp(a: U, b: U) U { return if (a < b) 1 else 0; }
-fn gtOp(a: U, b: U) U { return if (a > b) 1 else 0; }
-fn eqOp(a: U, b: U) U { return if (a == b) 1 else 0; }
-fn isZeroOp(a: U) U { return if (a == 0) 1 else 0; }
+fn ltOp(a: U, b: U) U {
+    return if (a < b) 1 else 0;
+}
+fn gtOp(a: U, b: U) U {
+    return if (a > b) 1 else 0;
+}
+fn eqOp(a: U, b: U) U {
+    return if (a == b) 1 else 0;
+}
+fn isZeroOp(a: U) U {
+    return if (a == 0) 1 else 0;
+}
 
 fn sltOp(a: U, b: U) U {
     const a_neg = (a >> 255) == 1;

@@ -5,11 +5,21 @@ const helpers = @import("helpers.zig");
 
 const U = primitives.U256;
 
-fn andOp(a: U, b: U) U { return a & b; }
-fn orOp(a: U, b: U) U { return a | b; }
-fn xorOp(a: U, b: U) U { return a ^ b; }
-fn notOp(a: U) U { return ~a; }
-fn clzOp(a: U) U { return @as(U, @clz(a)); }
+fn andOp(a: U, b: U) U {
+    return a & b;
+}
+fn orOp(a: U, b: U) U {
+    return a | b;
+}
+fn xorOp(a: U, b: U) U {
+    return a ^ b;
+}
+fn notOp(a: U) U {
+    return ~a;
+}
+fn clzOp(a: U) U {
+    return @as(U, @clz(a));
+}
 
 fn byteOp(i: U, x: U) U {
     return if (i < 32) (x >> @intCast((31 - i) * 8)) & 0xFF else 0;
