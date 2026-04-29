@@ -593,12 +593,14 @@ pub fn transitionWithContext(
     var instructions = handler_mod.Instructions.new(spec);
     var precompiles = handler_mod.Precompiles.new(spec);
 
-    // Pre-size journal HashMaps to avoid repeated grows under the bump allocator.
+    // Pre-size journal HashMaps and ArrayLists to avoid repeated grows under the bump allocator.
     // Upper bound: all pre-state accounts plus a few new accounts per tx.
     const account_hint: u32 = @intCast(pre_alloc_in.count() + txs.len * 4);
     try ctx.journaled_state.inner.evm_state.ensureTotalCapacity(account_hint);
     try ctx.journaled_state.inner.bal_pre_accounts.ensureTotalCapacity(account_hint);
     try ctx.journaled_state.inner.bal_pending_accounts.ensureTotalCapacity(account_hint);
+    // ~64 journal entries per tx on average (account touches, balance changes, warms, etc.)
+    try ctx.journaled_state.inner.journal.ensureTotalCapacity(alloc_mod.get(), txs.len * 64);
 
     // ── EIP-7928 BAL tracker (Amsterdam+) ────────────────────────────────────
     var tracker: ?BaTracker = if (primitives.isEnabledIn(spec, .amsterdam))
