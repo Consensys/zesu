@@ -619,7 +619,7 @@ fn executeIterative(
 ) !IterativeResult {
     const call_ops = interpreter_mod.opcodes.call_ops;
 
-    var frames = std.ArrayList(FrameEntry).empty;
+    var frames = try std.ArrayList(FrameEntry).initCapacity(alloc_mod.get(), 16);
     defer {
         for (frames.items) |*f| f.interp.deinit();
         frames.deinit(alloc_mod.get());
