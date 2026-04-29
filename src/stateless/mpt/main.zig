@@ -828,7 +828,10 @@ fn batchUpdateNodeIndexed(
                 var sole: i32 = -1;
                 for (enc, 0..) |ce, ci| {
                     if (ce.len == 1 and ce[0] == 0x80) continue;
-                    if (sole >= 0) { sole = -2; break; }
+                    if (sole >= 0) {
+                        sole = -2;
+                        break;
+                    }
                     sole = @intCast(ci);
                 }
                 if (sole >= 0) return collapseIndexed(alloc, @intCast(sole), enc[@intCast(sole)], index);
