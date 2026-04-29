@@ -761,7 +761,7 @@ fn updNodeExIndexed(
         .branch => |b| {
             if (remaining.len == 0) {
                 var enc: [16][]const u8 = undefined;
-                for (b.children, 0..) |child, i| enc[i] = try updRefEnc(alloc, child);
+                for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
                 return updEncodeBranch(alloc, &enc, new_val orelse &.{});
             }
             const nib = remaining[0];
@@ -769,9 +769,8 @@ fn updNodeExIndexed(
             const new_child_rlp = try updNodeExIndexed(alloc, child_rlp, remaining[1..], new_val, index);
             const new_child_enc = try updHashOrEmbedExIndexed(alloc, new_child_rlp, index);
             var enc: [16][]const u8 = undefined;
-            for (b.children, 0..) |child, i| {
-                if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
-            }
+            for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
+            enc[nib] = new_child_enc;
 
             // Collapse branch if deletion leaves only one non-empty child with no value.
             // Canonical MPT requires replacing such a branch with an extension or leaf.
@@ -936,7 +935,7 @@ fn updNode(
             if (remaining.len == 0) {
                 // Update branch value slot (rare in Ethereum storage tries)
                 var enc: [16][]const u8 = undefined;
-                for (b.children, 0..) |child, i| enc[i] = try updRefEnc(alloc, child);
+                for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
                 return updEncodeBranch(alloc, &enc, new_val orelse &.{});
             }
             const nib = remaining[0];
@@ -944,9 +943,8 @@ fn updNode(
             const new_child_rlp = try updNode(alloc, child_rlp, remaining[1..], new_val, pool);
             const new_child_enc = try updHashOrEmbed(alloc, new_child_rlp);
             var enc: [16][]const u8 = undefined;
-            for (b.children, 0..) |child, i| {
-                if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
-            }
+            for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
+            enc[nib] = new_child_enc;
 
             // Collapse branch if deletion leaves only one non-empty child with no value.
             if (new_val == null and b.value.len == 0) {
@@ -1113,7 +1111,7 @@ fn updNodeEx(
         .branch => |b| {
             if (remaining.len == 0) {
                 var enc: [16][]const u8 = undefined;
-                for (b.children, 0..) |child, i| enc[i] = try updRefEnc(alloc, child);
+                for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
                 return updEncodeBranch(alloc, &enc, new_val orelse &.{});
             }
             const nib = remaining[0];
@@ -1121,9 +1119,8 @@ fn updNodeEx(
             const new_child_rlp = try updNodeEx(alloc, child_rlp, remaining[1..], new_val, pool, extra);
             const new_child_enc = try updHashOrEmbedEx(alloc, new_child_rlp, extra);
             var enc: [16][]const u8 = undefined;
-            for (b.children, 0..) |child, i| {
-                if (i == nib) enc[i] = new_child_enc else enc[i] = try updRefEnc(alloc, child);
-            }
+            for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
+            enc[nib] = new_child_enc;
 
             // Collapse branch if deletion leaves only one non-empty child with no value.
             if (new_val == null and b.value.len == 0) {
@@ -1283,6 +1280,21 @@ fn updRefEnc(alloc: std.mem.Allocator, ref: node.NodeRef) ![]const u8 {
         .empty => alloc.dupe(u8, &.{0x80}),
         .hash => |h| updRlpBytes(alloc, h),
         .inline_node => |b| b,
+    };
+}
+
+/// Zero-copy variant of updRefEnc for unchanged branch children.
+/// Returns a slice directly into parent_rlp (hash/inline cases) or a static literal (empty).
+/// Caller must ensure parent_rlp is the exact node bytes from which `ref` was decoded.
+inline fn refEncSlice(parent_rlp: []const u8, ref: node.NodeRef) []const u8 {
+    return switch (ref) {
+        .empty => &.{0x80},
+        .inline_node => |b| b,
+        .hash => |h| blk: {
+            // h points 1 byte past the 0xa0 RLP prefix inside parent_rlp.
+            const off = @intFromPtr(h) - @intFromPtr(parent_rlp.ptr);
+            break :blk parent_rlp[off - 1 .. off + 32];
+        },
     };
 }
 
