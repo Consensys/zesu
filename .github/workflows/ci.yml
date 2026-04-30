@@ -91,45 +91,16 @@ jobs:
       - name: Run zkEVM tests
         run: ./zig-out/bin/zkevm-blockchain-test-runner
 
-  blockchain-tests-matrix:
-    name: Detect blockchain test suites
-    runs-on: ubuntu-latest
-    outputs:
-      suites: ${{ steps.detect.outputs.suites }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: '0.16.0'
-
-      - name: Cache blockchain fixtures
-        id: fixtures-cache
-        uses: actions/cache@v4
-        with:
-          path: spec-tests/fixtures/blockchain_tests
-          key: blockchain-fixtures-bal-v5.5.1
-
-      - name: Fetch blockchain test fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: zig build fetch-fixtures
-
-      - name: Detect suites
-        id: detect
-        run: |
-          suites=$(ls spec-tests/fixtures/blockchain_tests/ | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "suites=$suites" >> "$GITHUB_OUTPUT"
-
   blockchain-tests:
     name: Blockchain Tests (${{ matrix.suite }})
-    needs: blockchain-tests-matrix
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJson(needs.blockchain-tests-matrix.outputs.suites) }}
+        suite:
+          - for_amsterdam
+          - for_bpo2toamsterdamattime15k
+          - for_osaka
 
     steps:
       - name: Checkout code
