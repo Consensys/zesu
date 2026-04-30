@@ -121,6 +121,9 @@ pub fn activeForkName(name: []const u8, timestamp: u64) []const u8 {
 /// Timestamp-based forks (post-Merge) take priority over block-based ones.
 pub fn mainnetSpec(block_number: u64, timestamp: u64) primitives.SpecId {
     // Timestamp-based (post-Merge)
+    if (timestamp >= 1_767_747_671) return .bpo2;
+    if (timestamp >= 1_765_290_071) return .bpo1;
+    if (timestamp >= 1_764_798_551) return .osaka;
     if (timestamp >= 1_746_612_311) return .prague;
     if (timestamp >= 1_710_338_135) return .cancun;
     if (timestamp >= 1_681_338_455) return .shanghai;
