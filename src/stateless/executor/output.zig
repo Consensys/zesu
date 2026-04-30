@@ -10,6 +10,31 @@ const rlp = @import("./rlp_encode.zig");
 const mpt_builder = @import("mpt").builder;
 const mpt = @import("mpt");
 
+// ─── BatchChange sort ──────────────────────────────────────────────────────────
+
+// Sort `changes` in-place by key, ascending.
+//
+// Sorting the 48-byte BatchChange structs directly makes every swap copy 48 bytes.
+// Instead: sort u32 indices (4 bytes per swap, 12× cheaper), then gather into place
+// in one sequential O(N) pass. For keccak256 keys the u64-prefix comparison
+// distinguishes virtually all pairs in one integer operation.
+fn sortBatchChanges(alloc: std.mem.Allocator, changes: []mpt.BatchChange) !void {
+    if (changes.len <= 1) return;
+    const indices = try alloc.alloc(u32, changes.len);
+    for (0..changes.len) |i| indices[i] = @intCast(i);
+    std.mem.sort(u32, indices, changes, struct {
+        fn lt(ctx: []mpt.BatchChange, ai: u32, bi: u32) bool {
+            const ak = std.mem.readInt(u64, ctx[ai].key[0..8], .big);
+            const bk = std.mem.readInt(u64, ctx[bi].key[0..8], .big);
+            if (ak != bk) return ak < bk;
+            return std.mem.lessThan(u8, ctx[ai].key[8..], ctx[bi].key[8..]);
+        }
+    }.lt);
+    const tmp = try alloc.alloc(mpt.BatchChange, changes.len);
+    for (0..changes.len) |i| tmp[i] = changes[indices[i]];
+    @memcpy(changes, tmp);
+}
+
 // ─── Logs hash ────────────────────────────────────────────────────────────────
 
 /// Compute logsHash: keccak256 of the RLP-encoded list of all logs across all transactions.
@@ -137,11 +162,7 @@ pub fn computeStateRootDelta(
         n += 1;
     }
 
-    std.mem.sort(mpt.BatchChange, changes[0..n], {}, struct {
-        fn lt(_: void, a: mpt.BatchChange, b: mpt.BatchChange) bool {
-            return std.mem.lessThan(u8, &a.key, &b.key);
-        }
-    }.lt);
+    try sortBatchChanges(alloc, changes[0..n]);
 
     return mpt.batchUpdateIndexed(alloc, pre_state_root, changes[0..n], index);
 }
@@ -203,11 +224,7 @@ fn computeStorageRootBatch(
         n += 1;
     }
 
-    std.mem.sort(mpt.BatchChange, changes[0..n], {}, struct {
-        fn lt(_: void, a: mpt.BatchChange, b: mpt.BatchChange) bool {
-            return std.mem.lessThan(u8, &a.key, &b.key);
-        }
-    }.lt);
+    try sortBatchChanges(alloc, changes[0..n]);
 
     return mpt.batchUpdateIndexed(alloc, old_root, changes[0..n], index);
 }
