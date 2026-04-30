@@ -122,12 +122,14 @@ jobs:
         run: zig build install
 
       - name: Cache zkEVM fixtures
+        id: zkevm-fixtures-cache
         uses: actions/cache@v4
         with:
           path: spec-tests/fixtures/zkevm
           key: zkevm-fixtures-v0.3.3
 
       - name: Fetch zkEVM fixtures
+        if: steps.zkevm-fixtures-cache.outputs.cache-hit != 'true'
         run: zig build fetch-zkevm-fixtures
 
       - name: Run zkEVM tests
@@ -209,12 +211,14 @@ jobs:
         run: zig build install
 
       - name: Cache blockchain fixtures
+        id: fixtures-cache
         uses: actions/cache@v4
         with:
           path: spec-tests/fixtures/blockchain_tests
           key: blockchain-fixtures-bal-v5.5.1
 
       - name: Fetch blockchain test fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: zig build fetch-fixtures
 
       - name: Run blockchain tests (${{ matrix.suite }})
