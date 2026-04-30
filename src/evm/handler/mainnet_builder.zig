@@ -601,7 +601,7 @@ const IterativeResult = struct {
 
 /// One entry on the iterative call stack.
 const FrameEntry = struct {
-    interp: interpreter_mod.Interpreter,
+    interp: *interpreter_mod.Interpreter,
     /// What created this sub-frame (null for root).
     cause: ?union(enum) {
         call: interpreter_mod.PendingCallData,
@@ -619,12 +619,17 @@ fn executeIterative(
 ) !IterativeResult {
     const call_ops = interpreter_mod.opcodes.call_ops;
 
-    var frames = std.ArrayList(FrameEntry).empty;
+    var frames = try std.ArrayList(FrameEntry).initCapacity(alloc_mod.get(), 16);
     defer {
-        for (frames.items) |*f| f.interp.deinit();
+        for (frames.items) |f| {
+            f.interp.deinit();
+            alloc_mod.get().destroy(f.interp);
+        }
         frames.deinit(alloc_mod.get());
     }
-    try frames.append(alloc_mod.get(), .{ .interp = root_interp, .cause = null });
+    const root_ptr = try alloc_mod.get().create(interpreter_mod.Interpreter);
+    root_ptr.* = root_interp;
+    try frames.append(alloc_mod.get(), .{ .interp = root_ptr, .cause = null });
 
     // Build instruction table once: spec is constant for the lifetime of a block.
     const schedule = interpreter_mod.protocol_schedule.makeInstructionTable(root_interp.runtime_flags.spec_id);
@@ -663,7 +668,9 @@ fn executeIterative(
                     );
                     // EIP-8037: forward the reservoir from parent to child.
                     sub_interp.gas.reservoir = pc.inputs.reservoir;
-                    try frames.append(alloc_mod.get(), .{ .interp = sub_interp, .cause = .{ .call = pc } });
+                    const call_ptr = try alloc_mod.get().create(interpreter_mod.Interpreter);
+                    call_ptr.* = sub_interp;
+                    try frames.append(alloc_mod.get(), .{ .interp = call_ptr, .cause = .{ .call = pc } });
                 },
                 .create => |pc| {
                     const init_bytecode = bytecode.Bytecode.newRaw(pc.inputs.init_code);
@@ -686,7 +693,9 @@ fn executeIterative(
                     );
                     // EIP-8037: forward the reservoir from parent to child.
                     sub_interp.gas.reservoir = pc.inputs.reservoir;
-                    try frames.append(alloc_mod.get(), .{ .interp = sub_interp, .cause = .{ .create = pc } });
+                    const create_ptr = try alloc_mod.get().create(interpreter_mod.Interpreter);
+                    create_ptr.* = sub_interp;
+                    try frames.append(alloc_mod.get(), .{ .interp = create_ptr, .cause = .{ .create = pc } });
                 },
                 .none => unreachable,
             }
@@ -730,8 +739,10 @@ fn executeIterative(
             return_data_buf.appendSlice(alloc_mod.get(), rd_raw) catch {};
 
             const cause = frame.cause orelse unreachable;
-            frame.interp.deinit();
+            const sub_ptr = frame.interp;
+            sub_ptr.deinit();
             _ = frames.pop();
+            alloc_mod.get().destroy(sub_ptr);
             const parent = &frames.items[frames.items.len - 1];
             const parent_spec = parent.interp.runtime_flags.spec_id;
 
@@ -752,7 +763,7 @@ fn executeIterative(
                         r.state_gas_used = 0;
                         r.state_gas_remaining = sub_state_gas + sub_reservoir;
                     }
-                    call_ops.resumeCall(&parent.interp, r, pc.ret_off, pc.ret_size);
+                    call_ops.resumeCall(parent.interp, r, pc.ret_off, pc.ret_size);
                 },
                 .create => |pc| {
                     var r = host.finalizeCreate(pc.checkpoint, pc.new_addr, sub_result, sub_gas_rem, sub_gas_ref, return_data_buf.items, parent_spec, true, sub_reservoir);
@@ -764,7 +775,7 @@ fn executeIterative(
                     } else {
                         r.state_gas_remaining += sub_state_gas;
                     }
-                    call_ops.resumeCreate(&parent.interp, r);
+                    call_ops.resumeCreate(parent.interp, r);
                 },
             }
         }

@@ -337,23 +337,24 @@ pub fn encodeAndHash(alloc: std.mem.Allocator, entries: []const EncodeEntry) ![3
 }
 
 fn encodeBalRlp(alloc: std.mem.Allocator, entries: []const EncodeEntry) ![]u8 {
-    var items = std.ArrayListUnmanaged([]const u8).empty;
+    var items = try std.ArrayListUnmanaged([]const u8).initCapacity(alloc, entries.len);
     for (entries) |entry| try items.append(alloc, try encodeEntryRlp(alloc, entry));
     return rlp.encodeList(alloc, items.items);
 }
 
 fn encodeEntryRlp(alloc: std.mem.Allocator, entry: EncodeEntry) ![]u8 {
-    var parts = std.ArrayListUnmanaged([]const u8).empty;
+    // 6 fields: address + storageChanges + storageReads + balanceChanges + nonceChanges + codeChanges
+    var parts = try std.ArrayListUnmanaged([]const u8).initCapacity(alloc, 6);
 
     // address (always 20 bytes)
     try parts.append(alloc, try rlp.encodeBytes(alloc, &entry.address));
 
     // storageChanges: [ [slot_bytes, [[bai, postValue], ...]], ... ]
     {
-        var sc_items = std.ArrayListUnmanaged([]const u8).empty;
+        var sc_items = try std.ArrayListUnmanaged([]const u8).initCapacity(alloc, entry.storage_changes.len);
         for (entry.storage_changes) |sc| {
             const slot_rlp = try rlp.encodeU256(alloc, sc.slot);
-            var pairs = std.ArrayListUnmanaged([]const u8).empty;
+            var pairs = try std.ArrayListUnmanaged([]const u8).initCapacity(alloc, sc.changes.len);
             for (sc.changes) |ch| {
                 const bai_rlp = try rlp.encodeU64(alloc, ch.bai);
                 const val_rlp = try rlp.encodeU256(alloc, ch.value);
@@ -367,14 +368,14 @@ fn encodeEntryRlp(alloc: std.mem.Allocator, entry: EncodeEntry) ![]u8 {
 
     // storageReads: [ slot_bytes, ... ]
     {
-        var sr_items = std.ArrayListUnmanaged([]const u8).empty;
+        var sr_items = try std.ArrayListUnmanaged([]const u8).initCapacity(alloc, entry.storage_reads.len);
         for (entry.storage_reads) |slot| try sr_items.append(alloc, try rlp.encodeU256(alloc, slot));
         try parts.append(alloc, try rlp.encodeList(alloc, sr_items.items));
     }
 
     // balanceChanges: [ [bai, postBalance], ... ]
     {
-        var bal_items = std.ArrayListUnmanaged([]const u8).empty;
+        var bal_items = try std.ArrayListUnmanaged([]const u8).initCapacity(alloc, entry.balance_changes.len);
         for (entry.balance_changes) |bc| {
             const bai_rlp = try rlp.encodeU64(alloc, bc.bai);
             const val_rlp = try rlp.encodeU256(alloc, bc.value);
@@ -385,7 +386,7 @@ fn encodeEntryRlp(alloc: std.mem.Allocator, entry: EncodeEntry) ![]u8 {
 
     // nonceChanges: [ [bai, postNonce], ... ]
     {
-        var nc_items = std.ArrayListUnmanaged([]const u8).empty;
+        var nc_items = try std.ArrayListUnmanaged([]const u8).initCapacity(alloc, entry.nonce_changes.len);
         for (entry.nonce_changes) |nc| {
             const bai_rlp = try rlp.encodeU64(alloc, nc.bai);
             const val_rlp = try rlp.encodeU64(alloc, nc.value);
@@ -396,7 +397,7 @@ fn encodeEntryRlp(alloc: std.mem.Allocator, entry: EncodeEntry) ![]u8 {
 
     // codeChanges: [ [bai, postCode], ... ]
     {
-        var cc_items = std.ArrayListUnmanaged([]const u8).empty;
+        var cc_items = try std.ArrayListUnmanaged([]const u8).initCapacity(alloc, entry.code_changes.len);
         for (entry.code_changes) |cc| {
             const bai_rlp = try rlp.encodeU64(alloc, cc.bai);
             const code_rlp = try rlp.encodeBytes(alloc, cc.code);

@@ -41,7 +41,8 @@ const EMPTY_TRIE_HASH: primitives.Hash = .{
 pub const WitnessDatabase = struct {
     node_index: *const mpt.NodeIndex,
     pre_state_root: primitives.Hash,
-    codes: []const []const u8,
+    /// Witness bytecodes indexed by keccak256(code) for O(1) lookup.
+    witness_codes: std.AutoHashMap(primitives.Hash, []const u8),
     block_hashes: []const types.BlockHashEntry,
     /// Bytecodes deployed by CREATE in the current block, keyed by code hash.
     /// EIP-8025: verifier derives these from execution, so they need not be in the witness.
@@ -61,17 +62,34 @@ pub const WitnessDatabase = struct {
         codes: []const []const u8,
         block_hashes: []const types.BlockHashEntry,
     ) !Self {
+        var witness_codes = std.AutoHashMap(primitives.Hash, []const u8).init(alloc);
+        try witness_codes.ensureTotalCapacity(@intCast(codes.len));
+        for (codes) |code_bytes| {
+            const h = mpt.keccak256(code_bytes);
+            try witness_codes.put(h, code_bytes);
+        }
         return .{
             .node_index = node_index,
             .pre_state_root = pre_state_root,
-            .codes = codes,
+            .witness_codes = witness_codes,
             .block_hashes = block_hashes,
             .deployed_codes = std.AutoHashMap(primitives.Hash, bytecode.Bytecode).init(alloc),
-            .storage_root_cache = std.AutoHashMap(primitives.Address, primitives.Hash).init(alloc),
+            .storage_root_cache = blk: {
+                var m = std.AutoHashMap(primitives.Address, primitives.Hash).init(alloc);
+                try m.ensureTotalCapacity(@intCast(node_index.count()));
+                break :blk m;
+            },
         };
     }
 
+    /// Upper bound on unique accounts that will be accessed during execution.
+    /// Used by the journal to pre-size its HashMaps and avoid grow+rehash under the bump allocator.
+    pub fn accountHint(self: *const Self) u32 {
+        return @intCast(self.node_index.count());
+    }
+
     pub fn deinit(self: *Self) void {
+        self.witness_codes.deinit();
         self.deployed_codes.deinit();
         self.storage_root_cache.deinit();
     }
@@ -116,16 +134,15 @@ pub const WitnessDatabase = struct {
         if (std.mem.eql(u8, &code_hash, &primitives.KECCAK_EMPTY)) {
             return bytecode.Bytecode.newLegacy(&.{});
         }
-        for (self.codes) |code_bytes| {
-            const h = mpt.keccak256(code_bytes);
-            if (std.mem.eql(u8, &h, &code_hash)) {
-                if (code_bytes.len == 23 and code_bytes[0] == 0xEF and code_bytes[1] == 0x01 and code_bytes[2] == 0x00) {
-                    var delegation_addr: primitives.Address = [_]u8{0} ** 20;
-                    @memcpy(&delegation_addr, code_bytes[3..23]);
-                    return bytecode.Bytecode{ .eip7702 = bytecode.Eip7702Bytecode.new(delegation_addr) };
-                }
-                return bytecode.Bytecode.newLegacy(code_bytes);
+        if (self.witness_codes.get(code_hash)) |code_bytes| {
+            // Detect EIP-7702 delegation pointer: 0xEF 0x01 0x00 + 20-byte address (23 bytes total).
+            // Must return Bytecode.eip7702 so that setupCall detects it and loads the delegation target.
+            if (code_bytes.len == 23 and code_bytes[0] == 0xEF and code_bytes[1] == 0x01 and code_bytes[2] == 0x00) {
+                var delegation_addr: primitives.Address = [_]u8{0} ** 20;
+                @memcpy(&delegation_addr, code_bytes[3..23]);
+                return bytecode.Bytecode{ .eip7702 = bytecode.Eip7702Bytecode.new(delegation_addr) };
             }
+            return bytecode.Bytecode.newLegacy(code_bytes);
         }
         if (self.deployed_codes.get(code_hash)) |code| return code;
         return DbError.InvalidWitness;

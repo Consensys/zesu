@@ -593,6 +593,21 @@ pub fn transitionWithContext(
     var instructions = handler_mod.Instructions.new(spec);
     var precompiles = handler_mod.Precompiles.new(spec);
 
+    // Pre-size journal HashMaps and ArrayLists to avoid repeated grows under the bump allocator.
+    // Prefer the DB's accountHint() (node count) when available — in the stateless path
+    // pre_alloc_in is always empty so pre_alloc_in.count() would give 0.
+    const DbType = @TypeOf(ctx.journaled_state.database);
+    const db_hint: u32 = if (@hasDecl(DbType, "accountHint"))
+        ctx.journaled_state.database.accountHint()
+    else
+        @intCast(pre_alloc_in.count());
+    const account_hint: u32 = db_hint + @as(u32, @intCast(txs.len)) * 4;
+    try ctx.journaled_state.inner.evm_state.ensureTotalCapacity(account_hint);
+    try ctx.journaled_state.inner.bal_pre_accounts.ensureTotalCapacity(account_hint);
+    try ctx.journaled_state.inner.bal_pending_accounts.ensureTotalCapacity(account_hint);
+    // ~64 journal entries per tx on average (account touches, balance changes, warms, etc.)
+    try ctx.journaled_state.inner.journal.ensureTotalCapacity(alloc_mod.get(), txs.len * 64);
+
     // ── EIP-7928 BAL tracker (Amsterdam+) ────────────────────────────────────
     var tracker: ?BaTracker = if (primitives.isEnabledIn(spec, .amsterdam))
         BaTracker.initFromPreAlloc(arena, pre_alloc_in)
@@ -1285,6 +1300,7 @@ fn extractPostState(
 ) !std.AutoHashMapUnmanaged(input.Address, input.AllocAccount) {
     // Start with a mutable copy of pre_alloc (use arena allocation for storage maps)
     var post = std.AutoHashMapUnmanaged(input.Address, input.AllocAccount).empty;
+    try post.ensureTotalCapacity(arena, pre_alloc.count() + ctx.journaled_state.inner.evm_state.count());
 
     // Clone all pre-state accounts
     var pre_it = pre_alloc.iterator();
