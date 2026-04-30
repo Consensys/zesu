@@ -1,4 +1,3 @@
-SPEC_TEST_VERSION = bal@v5.6.1
 SPEC_TEST_DIR = spec-tests
 
 ZIG_BUILD_CMD = zig build
@@ -89,19 +88,11 @@ install-apt-deps:
 		sudo ldconfig; \
 	else echo "mcl already installed"; fi
 
-$(SPEC_TEST_DIR)/.fixtures-$(SPEC_TEST_VERSION):
-	@echo "Downloading execution-spec-tests $(SPEC_TEST_VERSION)..."
-	rm -rf $(SPEC_TEST_DIR)/fixtures
-	mkdir -p $(SPEC_TEST_DIR)/fixtures
-	curl -fL "https://github.com/ethereum/execution-spec-tests/releases/download/$(SPEC_TEST_VERSION)/fixtures_bal.tar.gz" \
-		| tar xz --strip-components=1 -C $(SPEC_TEST_DIR)/fixtures/
-	touch $@
-	@echo "Downloaded execution-spec-tests $(SPEC_TEST_VERSION)"
-
-fetch-fixtures: $(SPEC_TEST_DIR)/.fixtures-$(SPEC_TEST_VERSION)
+fetch-fixtures:
+	@$(ZIG_BUILD_CMD) fetch-fixtures
 
 # Build and run all spec tests (state + blockchain)
-spec-tests: $(SPEC_TEST_DIR)/.fixtures-$(SPEC_TEST_VERSION)
+spec-tests: fetch-fixtures
 	@$(ZIG_BUILD_CMD) install
 	@./zig-out/bin/spec-test-runner \
 		--fixtures $(SPEC_TEST_DIR)/fixtures/state_tests \
@@ -111,11 +102,11 @@ spec-tests: $(SPEC_TEST_DIR)/.fixtures-$(SPEC_TEST_VERSION)
 		$(ARGS)
 
 # State tests only
-state-tests: $(SPEC_TEST_DIR)/.fixtures-$(SPEC_TEST_VERSION)
+state-tests: fetch-fixtures
 	@$(ZIG_BUILD_CMD) install
 	@./zig-out/bin/spec-test-runner --fixtures $(SPEC_TEST_DIR)/fixtures/state_tests $(ARGS)
 
 # Blockchain tests only
-blockchain-tests: $(SPEC_TEST_DIR)/.fixtures-$(SPEC_TEST_VERSION)
+blockchain-tests: fetch-fixtures
 	@$(ZIG_BUILD_CMD) install
 	@./zig-out/bin/blockchain-test-runner --fixtures $(SPEC_TEST_DIR)/fixtures/blockchain_tests $(ARGS)

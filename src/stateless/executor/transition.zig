@@ -594,14 +594,8 @@ pub fn transitionWithContext(
     var precompiles = handler_mod.Precompiles.new(spec);
 
     // Pre-size journal HashMaps and ArrayLists to avoid repeated grows under the bump allocator.
-    // Prefer the DB's accountHint() (node count) when available — in the stateless path
-    // pre_alloc_in is always empty so pre_alloc_in.count() would give 0.
-    const DbType = @TypeOf(ctx.journaled_state.database);
-    const db_hint: u32 = if (@hasDecl(DbType, "accountHint"))
-        ctx.journaled_state.database.accountHint()
-    else
-        @intCast(pre_alloc_in.count());
-    const account_hint: u32 = db_hint + @as(u32, @intCast(txs.len)) * 4;
+    // Upper bound: all pre-state accounts plus a few new accounts per tx.
+    const account_hint: u32 = @intCast(pre_alloc_in.count() + txs.len * 4);
     try ctx.journaled_state.inner.evm_state.ensureTotalCapacity(account_hint);
     try ctx.journaled_state.inner.bal_pre_accounts.ensureTotalCapacity(account_hint);
     try ctx.journaled_state.inner.bal_pending_accounts.ensureTotalCapacity(account_hint);

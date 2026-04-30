@@ -77,23 +77,74 @@ jobs:
       - name: Build
         run: zig build install
 
+      - name: Cache zkEVM fixtures
+        id: zkevm-fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: spec-tests/fixtures/zkevm
+          key: zkevm-fixtures-v0.3.3
+
       - name: Fetch zkEVM fixtures
+        if: steps.zkevm-fixtures-cache.outputs.cache-hit != 'true'
         run: zig build fetch-zkevm-fixtures
 
       - name: Run zkEVM tests
+        run: ./zig-out/bin/zkevm-blockchain-test-runner
+
+  blockchain-tests:
+    name: Blockchain Tests (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - for_amsterdam
+          - for_bpo2toamsterdamattime15k
+          - for_osaka
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.16.0'
+
+      - name: Install dependencies
+        run: make install-deps
+
+      - name: Build
+        run: zig build install
+
+      - name: Cache blockchain fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: spec-tests/fixtures/blockchain_tests
+          key: blockchain-fixtures-${{ hashFiles('build.zig') }}
+
+      - name: Fetch blockchain test fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: zig build fetch-fixtures
+
+      - name: Run blockchain tests (${{ matrix.suite }})
         run: |
-          set +e
-          output=$(./zig-out/bin/zkevm-blockchain-test-runner 2>&1)
-          exit_code=$?
-          echo "$output"
+          ./zig-out/bin/blockchain-test-runner \
+            --fixtures spec-tests/fixtures/blockchain_tests/${{ matrix.suite }}
 
-          summary=$(echo "$output" | grep -E "Results:|Failed:|Skipped:")
-          echo "## zkEVM Test Results" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "$summary" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-
-          exit $exit_code
+  blockchain-tests-result:
+    name: Blockchain Tests
+    if: always()
+    needs: blockchain-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all suites passed
+        run: |
+          if [ "${{ needs.blockchain-tests.result }}" != "success" ]; then
+            echo "One or more blockchain test suites failed"
+            exit 1
+          fi
 
   lint:
     name: Lint
