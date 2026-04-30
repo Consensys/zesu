@@ -454,14 +454,14 @@ pub fn build(b: *std.Build) void {
 
     // ── Fixture fetch steps ───────────────────────────────────────────────────
 
-    const fetch_fixtures_step = b.step("fetch-fixtures", "Download execution-spec-tests bal@v5.5.1 fixtures");
+    const fetch_fixtures_step = b.step("fetch-fixtures", "Download execution-spec-tests bal@v5.6.1 fixtures");
     fetch_fixtures_step.dependOn(&b.addSystemCommand(&.{
         "sh", "-c",
         "rm -rf spec-tests/fixtures && " ++
             "mkdir -p spec-tests/fixtures && " ++
-            "echo 'Downloading execution-spec-tests bal@v5.5.1 fixtures...' && " ++
+            "echo 'Downloading execution-spec-tests bal@v5.6.1 fixtures...' && " ++
             "curl -fL " ++
-            "https://github.com/ethereum/execution-spec-tests/releases/download/bal%40v5.5.1/fixtures_bal.tar.gz " ++
+            "https://github.com/ethereum/execution-spec-tests/releases/download/bal%40v5.6.1/fixtures_bal.tar.gz " ++
             "| tar xz --strip-components=1 -C spec-tests/fixtures/ && " ++
             "echo 'Done. Fixtures extracted to spec-tests/fixtures/'",
     }).step);
