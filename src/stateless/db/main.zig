@@ -74,18 +74,8 @@ pub const WitnessDatabase = struct {
             .witness_codes = witness_codes,
             .block_hashes = block_hashes,
             .deployed_codes = std.AutoHashMap(primitives.Hash, bytecode.Bytecode).init(alloc),
-            .storage_root_cache = blk: {
-                var m = std.AutoHashMap(primitives.Address, primitives.Hash).init(alloc);
-                try m.ensureTotalCapacity(@intCast(node_index.count()));
-                break :blk m;
-            },
+            .storage_root_cache = std.AutoHashMap(primitives.Address, primitives.Hash).init(alloc),
         };
-    }
-
-    /// Upper bound on unique accounts that will be accessed during execution.
-    /// Used by the journal to pre-size its HashMaps and avoid grow+rehash under the bump allocator.
-    pub fn accountHint(self: *const Self) u32 {
-        return @intCast(self.node_index.count());
     }
 
     pub fn deinit(self: *Self) void {
