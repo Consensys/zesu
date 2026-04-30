@@ -122,7 +122,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spec-tests/fixtures/blockchain_tests
-          key: blockchain-fixtures-bal-v5.5.1
+          key: blockchain-fixtures-${{ hashFiles('build.zig') }}
 
       - name: Fetch blockchain test fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
