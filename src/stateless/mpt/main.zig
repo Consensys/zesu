@@ -39,6 +39,10 @@ pub const AccountState = struct {
     code_hash: primitives.Hash,
 };
 
+/// RLP encoding of an empty node (single byte 0x80). Used as a static sentinel
+/// to avoid bump-allocator dupe calls for the common empty-node case in trie updates.
+const EMPTY_NODE_RLP: [1]u8 = .{0x80};
+
 // ─── keccak256 ─────────────────────────────────────────────────────────────────
 
 /// Delegates to the injected accelerators module.
@@ -353,6 +357,22 @@ pub fn verifyProofIndexed(
             .hash => |h| findNodeInIndex(index, h.*) orelse return error.InvalidProof,
             .inline_node => |inl| inl,
         };
+
+        // Fast path for branch nodes: decode only the child we need (O(nibble)
+        // instead of O(17)). decodeNibble returns null for leaf/extension nodes,
+        // in which case we fall through to the full decodeNode path below.
+        if (pos < 64) {
+            const nibble = key_nibbles[pos];
+            if (try node.decodeNibble(node_rlp, nibble)) |child_ref| {
+                pos += 1;
+                switch (child_ref) {
+                    .empty => return null,
+                    .hash => |h| expected = .{ .hash = h },
+                    .inline_node => |inl| expected = .{ .inline_node = inl },
+                }
+                continue;
+            }
+        }
 
         const decoded = node.decodeNode(node_rlp) catch |err| switch (err) {
             error.InvalidRlp => return error.InvalidRlp,
@@ -753,14 +773,12 @@ pub fn batchUpdateIndexed(
     else
         findNodeInIndex(index, root) orelse return error.InvalidProof;
     const new_root_rlp = try batchUpdateNodeIndexed(alloc, root_rlp, sorted_changes, 0, index);
-    return commitRoot(new_root_rlp, index);
+    return commitRoot(new_root_rlp);
 }
 
-fn commitRoot(new_root_rlp: []const u8, index: *NodeIndex) (MptError || error{OutOfMemory})![32]u8 {
+fn commitRoot(new_root_rlp: []const u8) [32]u8 {
     if (new_root_rlp.len == 1 and new_root_rlp[0] == 0x80) return EMPTY_TRIE_HASH;
-    const h = keccak256(new_root_rlp);
-    try index.put(h, new_root_rlp);
-    return h;
+    return keccak256(new_root_rlp);
 }
 
 inline fn nibbleAt(key: *const [32]u8, depth: u8) u8 {
@@ -777,10 +795,18 @@ fn batchUpdateNodeIndexed(
     if (changes.len == 1) {
         var key_nibs: [64]u8 = undefined;
         nibbles.bytesToNibbles(&changes[0].key, &key_nibs);
-        return updNodeExIndexed(alloc, node_rlp, key_nibs[depth..], changes[0].value, index);
+        // Insertion (value != null): no collapse possible, skip index.put for new nodes.
+        // Deletion (value == null): collapseIndexed may look up a sole remaining child
+        //   by hash — must use the put variant so the child is findable.
+        return if (changes[0].value != null)
+            updNodeExBatch(alloc, node_rlp, key_nibs[depth..], changes[0].value, index)
+        else
+            updNodeExIndexed(alloc, node_rlp, key_nibs[depth..], changes[0].value, index);
     }
 
     // Empty subtree with multiple inserts: build sequentially.
+    // Each iteration may create hashed intermediate nodes that subsequent iterations
+    // resolve via findNodeInIndex — index.put is required here.
     if (node_rlp.len == 1 and node_rlp[0] == 0x80) {
         var current = node_rlp;
         for (changes) |ch| {
@@ -801,6 +827,13 @@ fn batchUpdateNodeIndexed(
             var enc: [16][]const u8 = undefined;
             for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
 
+            // Collapse is only possible when at least one change is a deletion.
+            // When has_deletion=false, collapseIndexed is never called, so new child nodes
+            // need not be inserted into the index — callers receive them via return values.
+            const has_deletion = for (changes) |ch| {
+                if (ch.value == null) break true;
+            } else false;
+
             // Partition sorted changes by nibble at this depth; each run is contiguous.
             var i: usize = 0;
             while (i < changes.len) {
@@ -814,15 +847,15 @@ fn batchUpdateNodeIndexed(
                     .inline_node => |il| il,
                 };
                 const new_child_rlp = try batchUpdateNodeIndexed(alloc, child_rlp, changes[i..j], depth + 1, index);
-                enc[nib] = try updHashOrEmbedExIndexed(alloc, new_child_rlp, index);
+                enc[nib] = if (has_deletion)
+                    try updHashOrEmbedExIndexed(alloc, new_child_rlp, index)
+                else
+                    try updHashOrEmbed(alloc, new_child_rlp);
                 i = j;
             }
 
             // Collapse branch if a deletion leaves exactly one non-empty child with no value.
             // Only possible when at least one change is a deletion (value == null).
-            const has_deletion = for (changes) |ch| {
-                if (ch.value == null) break true;
-            } else false;
 
             if (has_deletion and b.value.len == 0) {
                 var sole: i32 = -1;
@@ -835,7 +868,7 @@ fn batchUpdateNodeIndexed(
                     sole = @intCast(ci);
                 }
                 if (sole >= 0) return collapseIndexed(alloc, @intCast(sole), enc[@intCast(sole)], index);
-                if (sole == -1) return alloc.dupe(u8, &.{0x80});
+                if (sole == -1) return &EMPTY_NODE_RLP;
             }
 
             return updEncodeBranch(alloc, &enc, b.value);
@@ -843,6 +876,8 @@ fn batchUpdateNodeIndexed(
 
         // Extension and leaf: fall back to sequential single-change updates.
         // These cases are rare for multi-change batches (most shared ancestors are branches).
+        // Each iteration may look up children created by the previous one via findNodeInIndex —
+        // index.put is required here.
         else => {
             var current = node_rlp;
             for (changes) |ch| {
@@ -867,7 +902,18 @@ fn updResolveRefExIndexed(ref: node.NodeRef, index: *const NodeIndex) MptError![
 
 /// Like updNodeEx but uses a single mutable NodeIndex for O(1) pool lookups.
 /// New intermediate nodes are inserted into `index` so subsequent chained updates find them.
-fn updNodeExIndexed(
+/// Single-change indexed trie update. `store_in_index` controls whether newly
+/// created intermediate nodes are inserted into `index`.
+///
+///   store_in_index = true  → chained update path (updateAccountChainedIndexed /
+///                             updateStorageChainedIndexed): subsequent calls need
+///                             to find nodes created by earlier calls.
+///   store_in_index = false → batch update path (batchUpdateIndexed): all lookups
+///                             use pre-existing witness nodes; newly created nodes
+///                             are returned directly up the call stack and never
+///                             looked up via the index within the same traversal.
+fn updNodeExImpl(
+    comptime store_in_index: bool,
     alloc: std.mem.Allocator,
     node_rlp: []const u8,
     remaining: []const u8,
@@ -876,7 +922,7 @@ fn updNodeExIndexed(
 ) (MptError || error{OutOfMemory})![]const u8 {
     if (node_rlp.len == 1 and node_rlp[0] == 0x80) {
         if (new_val) |val| return updMakeLeaf(alloc, remaining, val);
-        return alloc.dupe(u8, &.{0x80});
+        return &EMPTY_NODE_RLP;
     }
 
     const decoded = node.decodeNode(node_rlp) catch |err| switch (err) {
@@ -893,8 +939,8 @@ fn updNodeExIndexed(
             }
             const nib = remaining[0];
             const child_rlp = try updResolveRefExIndexed(b.children[nib], index);
-            const new_child_rlp = try updNodeExIndexed(alloc, child_rlp, remaining[1..], new_val, index);
-            const new_child_enc = try updHashOrEmbedExIndexed(alloc, new_child_rlp, index);
+            const new_child_rlp = try updNodeExImpl(store_in_index, alloc, child_rlp, remaining[1..], new_val, index);
+            const new_child_enc = if (comptime store_in_index) try updHashOrEmbedExIndexed(alloc, new_child_rlp, index) else try updHashOrEmbed(alloc, new_child_rlp);
             var enc: [16][]const u8 = undefined;
             for (b.children, 0..) |child, i| enc[i] = refEncSlice(node_rlp, child);
             enc[nib] = new_child_enc;
@@ -914,7 +960,7 @@ fn updNodeExIndexed(
                     }
                 }
                 if (sole >= 0) return collapseIndexed(alloc, @intCast(sole), enc[@intCast(sole)], index);
-                if (sole == -1) return alloc.dupe(u8, &.{0x80}); // all children empty
+                if (sole == -1) return &EMPTY_NODE_RLP; // all children empty
             }
 
             return updEncodeBranch(alloc, &enc, b.value);
@@ -929,9 +975,9 @@ fn updNodeExIndexed(
 
             if (cp == prefix.len) {
                 const child_rlp = try updResolveRefExIndexed(e.child, index);
-                const new_child_rlp = try updNodeExIndexed(alloc, child_rlp, remaining[cp..], new_val, index);
+                const new_child_rlp = try updNodeExImpl(store_in_index, alloc, child_rlp, remaining[cp..], new_val, index);
                 if (new_child_rlp.len == 1 and new_child_rlp[0] == 0x80)
-                    return alloc.dupe(u8, &.{0x80});
+                    return &EMPTY_NODE_RLP;
 
                 // When a deletion collapses a descendant branch into a short node,
                 // merge the extension path with the child's path (canonical form).
@@ -958,7 +1004,7 @@ fn updNodeExIndexed(
                     }
                 }
 
-                const new_child_ref = try updHashOrEmbedExIndexed(alloc, new_child_rlp, index);
+                const new_child_ref = if (comptime store_in_index) try updHashOrEmbedExIndexed(alloc, new_child_rlp, index) else try updHashOrEmbed(alloc, new_child_rlp);
                 return updMakeExtension(alloc, prefix, new_child_ref);
             }
 
@@ -970,13 +1016,13 @@ fn updNodeExIndexed(
 
             // Partial prefix match: split extension at position `cp`
             var children_enc: [16][]const u8 = undefined;
-            for (&children_enc) |*enc| enc.* = try alloc.dupe(u8, &.{0x80});
+            for (&children_enc) |*enc| enc.* = &EMPTY_NODE_RLP;
             var branch_val: []const u8 = &.{};
 
             const old_nib = prefix[cp];
             if (cp + 1 < prefix.len) {
                 const ext_rlp = try updMakeExtension(alloc, prefix[cp + 1 ..], try updRefEnc(alloc, e.child));
-                children_enc[old_nib] = try updHashOrEmbedExIndexed(alloc, ext_rlp, index);
+                children_enc[old_nib] = if (comptime store_in_index) try updHashOrEmbedExIndexed(alloc, ext_rlp, index) else try updHashOrEmbed(alloc, ext_rlp);
             } else {
                 children_enc[old_nib] = try updRefEnc(alloc, e.child);
             }
@@ -984,14 +1030,14 @@ fn updNodeExIndexed(
                 if (cp < remaining.len) {
                     const new_nib = remaining[cp];
                     const leaf_rlp = try updMakeLeaf(alloc, remaining[cp + 1 ..], val);
-                    children_enc[new_nib] = try updHashOrEmbedExIndexed(alloc, leaf_rlp, index);
+                    children_enc[new_nib] = if (comptime store_in_index) try updHashOrEmbedExIndexed(alloc, leaf_rlp, index) else try updHashOrEmbed(alloc, leaf_rlp);
                 } else {
                     branch_val = val;
                 }
             }
             const branch_rlp = try updEncodeBranch(alloc, &children_enc, branch_val);
             if (cp == 0) return branch_rlp;
-            const branch_ref = try updHashOrEmbedExIndexed(alloc, branch_rlp, index);
+            const branch_ref = if (comptime store_in_index) try updHashOrEmbedExIndexed(alloc, branch_rlp, index) else try updHashOrEmbed(alloc, branch_rlp);
             return updMakeExtension(alloc, prefix[0..cp], branch_ref);
         },
 
@@ -1004,7 +1050,7 @@ fn updNodeExIndexed(
 
             if (cp == suffix.len and cp == remaining.len) {
                 if (new_val) |val| return updMakeLeaf(alloc, suffix, val);
-                return alloc.dupe(u8, &.{0x80});
+                return &EMPTY_NODE_RLP;
             }
 
             if (new_val == null) {
@@ -1012,29 +1058,49 @@ fn updNodeExIndexed(
             }
 
             var children_enc: [16][]const u8 = undefined;
-            for (&children_enc) |*enc| enc.* = try alloc.dupe(u8, &.{0x80});
+            for (&children_enc) |*enc| enc.* = &EMPTY_NODE_RLP;
             var branch_val: []const u8 = &.{};
 
             if (cp < suffix.len) {
                 const old_nib = suffix[cp];
                 const old_leaf_rlp = try updMakeLeaf(alloc, suffix[cp + 1 ..], lf.value);
-                children_enc[old_nib] = try updHashOrEmbedExIndexed(alloc, old_leaf_rlp, index);
+                children_enc[old_nib] = if (comptime store_in_index) try updHashOrEmbedExIndexed(alloc, old_leaf_rlp, index) else try updHashOrEmbed(alloc, old_leaf_rlp);
             } else {
                 branch_val = lf.value;
             }
             if (cp < remaining.len) {
                 const new_nib = remaining[cp];
                 const new_leaf_rlp = try updMakeLeaf(alloc, remaining[cp + 1 ..], new_val.?);
-                children_enc[new_nib] = try updHashOrEmbedExIndexed(alloc, new_leaf_rlp, index);
+                children_enc[new_nib] = if (comptime store_in_index) try updHashOrEmbedExIndexed(alloc, new_leaf_rlp, index) else try updHashOrEmbed(alloc, new_leaf_rlp);
             } else {
                 branch_val = new_val.?;
             }
             const branch_rlp = try updEncodeBranch(alloc, &children_enc, branch_val);
             if (cp == 0) return branch_rlp;
-            const branch_ref = try updHashOrEmbedExIndexed(alloc, branch_rlp, index);
+            const branch_ref = if (comptime store_in_index) try updHashOrEmbedExIndexed(alloc, branch_rlp, index) else try updHashOrEmbed(alloc, branch_rlp);
             return updMakeExtension(alloc, suffix[0..cp], branch_ref);
         },
     }
+}
+
+fn updNodeExIndexed(
+    alloc: std.mem.Allocator,
+    node_rlp: []const u8,
+    remaining: []const u8,
+    new_val: ?[]const u8,
+    index: *NodeIndex,
+) (MptError || error{OutOfMemory})![]const u8 {
+    return updNodeExImpl(true, alloc, node_rlp, remaining, new_val, index);
+}
+
+fn updNodeExBatch(
+    alloc: std.mem.Allocator,
+    node_rlp: []const u8,
+    remaining: []const u8,
+    new_val: ?[]const u8,
+    index: *NodeIndex,
+) (MptError || error{OutOfMemory})![]const u8 {
+    return updNodeExImpl(false, alloc, node_rlp, remaining, new_val, index);
 }
 
 /// Recursively update a node and return its new RLP bytes.
@@ -1049,7 +1115,7 @@ fn updNode(
     // Empty node
     if (node_rlp.len == 1 and node_rlp[0] == 0x80) {
         if (new_val) |val| return updMakeLeaf(alloc, remaining, val);
-        return alloc.dupe(u8, &.{0x80});
+        return &EMPTY_NODE_RLP;
     }
 
     const decoded = node.decodeNode(node_rlp) catch |err| switch (err) {
@@ -1087,7 +1153,7 @@ fn updNode(
                     }
                 }
                 if (sole >= 0) return collapseNode(alloc, @intCast(sole), enc[@intCast(sole)], pool);
-                if (sole == -1) return alloc.dupe(u8, &.{0x80});
+                if (sole == -1) return &EMPTY_NODE_RLP;
             }
 
             return updEncodeBranch(alloc, &enc, b.value);
@@ -1105,7 +1171,7 @@ fn updNode(
                 const child_rlp = try updResolveRef(e.child, pool);
                 const new_child_rlp = try updNode(alloc, child_rlp, remaining[cp..], new_val, pool);
                 if (new_child_rlp.len == 1 and new_child_rlp[0] == 0x80)
-                    return alloc.dupe(u8, &.{0x80});
+                    return &EMPTY_NODE_RLP;
 
                 // Merge extension path with a collapsed child (canonical form).
                 if (new_val == null) {
@@ -1143,7 +1209,7 @@ fn updNode(
 
             // Partial prefix match: split extension at position `cp`
             var children_enc: [16][]const u8 = undefined;
-            for (&children_enc) |*enc| enc.* = try alloc.dupe(u8, &.{0x80});
+            for (&children_enc) |*enc| enc.* = &EMPTY_NODE_RLP;
             var branch_val: []const u8 = &.{};
 
             // Old extension tail goes into branch
@@ -1180,7 +1246,7 @@ fn updNode(
             if (cp == suffix.len and cp == remaining.len) {
                 // Full key match: update or delete
                 if (new_val) |val| return updMakeLeaf(alloc, suffix, val);
-                return alloc.dupe(u8, &.{0x80});
+                return &EMPTY_NODE_RLP;
             }
 
             if (new_val == null) {
@@ -1190,7 +1256,7 @@ fn updNode(
 
             // Divergence: split into branch (+ optional extension)
             var children_enc: [16][]const u8 = undefined;
-            for (&children_enc) |*enc| enc.* = try alloc.dupe(u8, &.{0x80});
+            for (&children_enc) |*enc| enc.* = &EMPTY_NODE_RLP;
             var branch_val: []const u8 = &.{};
 
             if (cp < suffix.len) {
@@ -1226,7 +1292,7 @@ fn updNodeEx(
 ) (MptError || error{OutOfMemory})![]const u8 {
     if (node_rlp.len == 1 and node_rlp[0] == 0x80) {
         if (new_val) |val| return updMakeLeaf(alloc, remaining, val);
-        return alloc.dupe(u8, &.{0x80});
+        return &EMPTY_NODE_RLP;
     }
 
     const decoded = node.decodeNode(node_rlp) catch |err| switch (err) {
@@ -1263,7 +1329,7 @@ fn updNodeEx(
                     }
                 }
                 if (sole >= 0) return collapseNodeEx(alloc, @intCast(sole), enc[@intCast(sole)], pool, extra);
-                if (sole == -1) return alloc.dupe(u8, &.{0x80});
+                if (sole == -1) return &EMPTY_NODE_RLP;
             }
 
             return updEncodeBranch(alloc, &enc, b.value);
@@ -1280,7 +1346,7 @@ fn updNodeEx(
                 const child_rlp = try updResolveRefEx(e.child, pool, extra.items);
                 const new_child_rlp = try updNodeEx(alloc, child_rlp, remaining[cp..], new_val, pool, extra);
                 if (new_child_rlp.len == 1 and new_child_rlp[0] == 0x80)
-                    return alloc.dupe(u8, &.{0x80});
+                    return &EMPTY_NODE_RLP;
 
                 // Merge extension path with a collapsed child (canonical form).
                 if (new_val == null) {
@@ -1317,7 +1383,7 @@ fn updNodeEx(
             }
 
             var children_enc: [16][]const u8 = undefined;
-            for (&children_enc) |*enc| enc.* = try alloc.dupe(u8, &.{0x80});
+            for (&children_enc) |*enc| enc.* = &EMPTY_NODE_RLP;
             var branch_val: []const u8 = &.{};
 
             const old_nib = prefix[cp];
@@ -1351,7 +1417,7 @@ fn updNodeEx(
 
             if (cp == suffix.len and cp == remaining.len) {
                 if (new_val) |val| return updMakeLeaf(alloc, suffix, val);
-                return alloc.dupe(u8, &.{0x80});
+                return &EMPTY_NODE_RLP;
             }
 
             if (new_val == null) {
@@ -1359,7 +1425,7 @@ fn updNodeEx(
             }
 
             var children_enc: [16][]const u8 = undefined;
-            for (&children_enc) |*enc| enc.* = try alloc.dupe(u8, &.{0x80});
+            for (&children_enc) |*enc| enc.* = &EMPTY_NODE_RLP;
             var branch_val: []const u8 = &.{};
 
             if (cp < suffix.len) {
@@ -1404,7 +1470,7 @@ fn updResolveRefEx(ref: node.NodeRef, pool: []const []const u8, extra_items: []c
 
 fn updRefEnc(alloc: std.mem.Allocator, ref: node.NodeRef) ![]const u8 {
     return switch (ref) {
-        .empty => alloc.dupe(u8, &.{0x80}),
+        .empty => &EMPTY_NODE_RLP,
         .hash => |h| updRlpBytes(alloc, h),
         .inline_node => |b| b,
     };
@@ -1627,7 +1693,7 @@ fn updRlpU256(alloc: std.mem.Allocator, v: u256) ![]const u8 {
 
 fn updRlpBytes(alloc: std.mem.Allocator, data: []const u8) ![]u8 {
     if (data.len == 1 and data[0] < 0x80) return alloc.dupe(u8, data);
-    if (data.len == 0) return alloc.dupe(u8, &.{0x80});
+    if (data.len == 0) return alloc.dupe(u8, &EMPTY_NODE_RLP);
     if (data.len <= 55) {
         const out = try alloc.alloc(u8, 1 + data.len);
         out[0] = @intCast(0x80 + data.len);
