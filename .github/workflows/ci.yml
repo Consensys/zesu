@@ -81,19 +81,62 @@ jobs:
         run: zig build fetch-zkevm-fixtures
 
       - name: Run zkEVM tests
+        run: ./zig-out/bin/zkevm-blockchain-test-runner
+
+  blockchain-tests-matrix:
+    name: Detect blockchain test suites
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.detect.outputs.suites }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.16.0'
+
+      - name: Fetch blockchain test fixtures
+        run: zig build fetch-fixtures
+
+      - name: Detect suites
+        id: detect
         run: |
-          set +e
-          output=$(./zig-out/bin/zkevm-blockchain-test-runner 2>&1)
-          exit_code=$?
-          echo "$output"
+          suites=$(ls spec-tests/fixtures/blockchain_tests/ | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "suites=$suites" >> "$GITHUB_OUTPUT"
 
-          summary=$(echo "$output" | grep -E "Results:|Failed:|Skipped:")
-          echo "## zkEVM Test Results" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "$summary" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+  blockchain-tests:
+    name: Blockchain Tests (${{ matrix.suite }})
+    needs: blockchain-tests-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJson(needs.blockchain-tests-matrix.outputs.suites) }}
 
-          exit $exit_code
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.16.0'
+
+      - name: Install dependencies
+        run: make install-deps
+
+      - name: Build
+        run: zig build install
+
+      - name: Fetch blockchain test fixtures
+        run: zig build fetch-fixtures
+
+      - name: Run blockchain tests (${{ matrix.suite }})
+        run: |
+          ./zig-out/bin/blockchain-test-runner \
+            --fixtures spec-tests/fixtures/blockchain_tests/${{ matrix.suite }}
 
   lint:
     name: Lint
