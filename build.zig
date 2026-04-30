@@ -454,15 +454,18 @@ pub fn build(b: *std.Build) void {
 
     // ── Fixture fetch steps ───────────────────────────────────────────────────
 
-    const fetch_fixtures_step = b.step("fetch-fixtures", "Download execution-spec-tests bal@v5.6.1 fixtures");
+    const spec_test_version = "bal@v5.6.1";
+    const fetch_fixtures_step = b.step("fetch-fixtures", "Download execution-spec-tests " ++ spec_test_version ++ " fixtures");
     fetch_fixtures_step.dependOn(&b.addSystemCommand(&.{
         "sh", "-c",
-        "rm -rf spec-tests/fixtures && " ++
-            "mkdir -p spec-tests/fixtures && " ++
-            "echo 'Downloading execution-spec-tests bal@v5.6.1 fixtures...' && " ++
-            "curl -fL " ++
-            "https://github.com/ethereum/execution-spec-tests/releases/download/bal%40v5.6.1/fixtures_bal.tar.gz " ++
+        "marker=spec-tests/.fixtures-" ++ spec_test_version ++ " && " ++
+            "[ -f \"$marker\" ] && echo 'Fixtures already up to date.' && exit 0; " ++
+            "echo 'Downloading execution-spec-tests " ++ spec_test_version ++ " fixtures...' && " ++
+            "rm -rf spec-tests/fixtures && mkdir -p spec-tests/fixtures && " ++
+            "encoded=$(printf '%s' '" ++ spec_test_version ++ "' | sed 's/@/%40/g') && " ++
+            "curl -fL \"https://github.com/ethereum/execution-spec-tests/releases/download/${encoded}/fixtures_bal.tar.gz\" " ++
             "| tar xz --strip-components=1 -C spec-tests/fixtures/ && " ++
+            "touch \"$marker\" && " ++
             "echo 'Done. Fixtures extracted to spec-tests/fixtures/'",
     }).step);
 
