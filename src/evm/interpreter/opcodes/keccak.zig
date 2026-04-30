@@ -3,13 +3,7 @@ const primitives = @import("primitives");
 const InstructionContext = @import("../instruction_context.zig").InstructionContext;
 const gas_costs = @import("../gas_costs.zig");
 const alloc_mod = @import("zesu_allocator");
-
-fn memoryCostWords(num_words: usize) u64 {
-    const n: u64 = @intCast(num_words);
-    const linear = std.math.mul(u64, n, gas_costs.G_MEMORY) catch return std.math.maxInt(u64);
-    const quadratic = (std.math.mul(u64, n, n) catch return std.math.maxInt(u64)) / 512;
-    return std.math.add(u64, linear, quadratic) catch std.math.maxInt(u64);
-}
+const memoryCostWords = @import("helpers.zig").memoryCostWords;
 
 /// KECCAK256 opcode (0x20): Compute Keccak-256 hash of memory region
 /// Stack: [offset, length] -> [hash]
