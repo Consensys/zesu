@@ -222,6 +222,19 @@ jobs:
           ./zig-out/bin/blockchain-test-runner \
             --fixtures spec-tests/fixtures/blockchain_tests/${{ matrix.suite }}
 
+  blockchain-tests-result:
+    name: Blockchain Tests
+    if: always()
+    needs: blockchain-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all suites passed
+        run: |
+          if [ "${{ needs.blockchain-tests.result }}" != "success" ]; then
+            echo "One or more blockchain test suites failed"
+            exit 1
+          fi
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
