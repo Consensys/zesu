@@ -128,7 +128,7 @@ fn buildAccessedEntries(
     post_alloc: std.AutoHashMapUnmanaged(types.Address, types.AllocAccount),
     deleted_accounts: []const types.Address,
 ) ![]types.AccessedEntry {
-    var entries = try std.ArrayListUnmanaged(types.AccessedEntry).initCapacity(alloc, access_log.accounts.count());
+    var entries = std.ArrayListUnmanaged(types.AccessedEntry).empty;
 
     var addr_iter = access_log.accounts.iterator();
     while (addr_iter.next()) |acc_kv| {
