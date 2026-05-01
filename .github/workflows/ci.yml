@@ -82,7 +82,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spec-tests/fixtures/zkevm
-          key: zkevm-fixtures-v0.3.3
+          key: zkevm-fixtures-${{ hashFiles('build.zig') }}
 
       - name: Fetch zkEVM fixtures
         if: steps.zkevm-fixtures-cache.outputs.cache-hit != 'true'

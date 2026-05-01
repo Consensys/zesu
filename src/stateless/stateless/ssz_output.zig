@@ -247,12 +247,12 @@ fn sparseRootFromBytes(data: []const u8, depth: u8) [32]u8 {
 
 fn htWithdrawal(w: input.Withdrawal) [32]u8 {
     // SszWithdrawal: 4 fields → merkleize 4 chunks (power of 2, no padding)
-    //   index: uint64, validator_index: uint64, address: ByteVector[20], amount: uint256
+    //   index: uint64, validator_index: uint64, address: ByteVector[20], amount: uint64
     const chunks: [4][32]u8 = .{
         htU64(w.index),
         htU64(w.validator_index),
         htBytes20(w.address),
-        htU256AsU64(w.amount), // amount is gwei, fits in u64
+        htU64(w.amount),
     };
     return merkleizeExact(&chunks);
 }
@@ -347,38 +347,109 @@ fn htVersionedHashes(hashes: []const [32]u8) [32]u8 {
     return mixInLength(root, hashes.len);
 }
 
-/// ByteList[2^20]: one execution request entry.
-/// limit = 2^20 bytes → ceil(2^20/32) = 2^15 chunk limit → depth 15.
-fn htByteList2_20(data: []const u8) [32]u8 {
-    const chunk_limit_depth = 15;
-    if (data.len == 0) return mixInLength(zeroHash(chunk_limit_depth), 0);
-    const nchunks = (data.len + 31) / 32;
-    if (nchunks <= 32) {
-        var leaf_buf: [32][32]u8 = undefined;
-        for (0..nchunks) |i| {
-            leaf_buf[i] = [_]u8{0} ** 32;
-            const start = i * 32;
-            const end = @min(start + 32, data.len);
-            @memcpy(leaf_buf[i][0 .. end - start], data[start..end]);
-        }
-        const root = sparseRoot(leaf_buf[0..nchunks], chunk_limit_depth);
-        return mixInLength(root, data.len);
-    } else {
-        const root = sparseRootFromBytes(data, chunk_limit_depth);
-        return mixInLength(root, data.len);
-    }
+// ── SszExecutionRequests hash_tree_root ──────────────────────────────────────
+//
+// SszExecutionRequests is a 3-field container (pad to 4 for merkleization):
+//   deposits:      List[SszDepositRequest,      2^13]   depth=13
+//   withdrawals:   List[SszWithdrawalRequest,   2^4]    depth=4
+//   consolidations:List[SszConsolidationRequest,2^1]    depth=1
+//
+// Fixed item sizes:
+//   SszDepositRequest:       pubkey(48)+withdrawal_creds(32)+amount(8)+signature(96)+index(8) = 192
+//   SszWithdrawalRequest:    source_address(20)+validator_pubkey(48)+amount(8) = 76
+//   SszConsolidationRequest: source_address(20)+source_pubkey(48)+target_pubkey(48) = 116
+
+/// ByteVector[48]: 2 chunks — sha2(bytes[0..32], bytes[32..48] || 0*16).
+fn htBytes48(b: *const [48]u8) [32]u8 {
+    var c1: [32]u8 = [_]u8{0} ** 32;
+    @memcpy(c1[0..16], b[32..48]);
+    return sha2(b[0..32].*, c1);
 }
 
-/// hash_tree_root for List[ByteList[2^20], 16] (execution_requests).
-/// limit = 16 → depth 4.
-fn htExecutionRequests(alloc: std.mem.Allocator, requests: []const []const u8) ![32]u8 {
-    const list_depth = 4;
-    if (requests.len == 0) return mixInLength(zeroHash(list_depth), 0);
-    const roots = try alloc.alloc([32]u8, requests.len);
+/// ByteVector[96]: 3 chunks → merkleize(c0, c1, c2, 0).
+fn htBytes96(b: *const [96]u8) [32]u8 {
+    return sha2(sha2(b[0..32].*, b[32..64].*), sha2(b[64..96].*, [_]u8{0} ** 32));
+}
+
+fn htDepositRequest(bytes: *const [192]u8) [32]u8 {
+    // 5 fields → pad to 8 chunks
+    const chunks: [8][32]u8 = .{
+        htBytes48(bytes[0..48]),
+        bytes[48..80].*,
+        htU64(std.mem.readInt(u64, bytes[80..88], .little)),
+        htBytes96(bytes[88..184]),
+        htU64(std.mem.readInt(u64, bytes[184..192], .little)),
+        [_]u8{0} ** 32,
+        [_]u8{0} ** 32,
+        [_]u8{0} ** 32,
+    };
+    return merkleizeExact(&chunks);
+}
+
+fn htWithdrawalRequest(bytes: *const [76]u8) [32]u8 {
+    // 3 fields → pad to 4 chunks
+    const chunks: [4][32]u8 = .{
+        htBytes20(bytes[0..20].*),
+        htBytes48(bytes[20..68]),
+        htU64(std.mem.readInt(u64, bytes[68..76], .little)),
+        [_]u8{0} ** 32,
+    };
+    return merkleizeExact(&chunks);
+}
+
+fn htConsolidationRequest(bytes: *const [116]u8) [32]u8 {
+    // 3 fields → pad to 4 chunks
+    const chunks: [4][32]u8 = .{
+        htBytes20(bytes[0..20].*),
+        htBytes48(bytes[20..68]),
+        htBytes48(bytes[68..116]),
+        [_]u8{0} ** 32,
+    };
+    return merkleizeExact(&chunks);
+}
+
+fn htDepositList(alloc: std.mem.Allocator, data: []const u8) ![32]u8 {
+    const SIZE = 192;
+    const list_depth = 13;
+    if (data.len == 0) return mixInLength(zeroHash(list_depth), 0);
+    if (data.len % SIZE != 0) return error.InvalidSsz;
+    const n = data.len / SIZE;
+    const roots = try alloc.alloc([32]u8, n);
     defer alloc.free(roots);
-    for (requests, 0..) |req_bytes, i| roots[i] = htByteList2_20(req_bytes);
-    const root = sparseRoot(roots, list_depth);
-    return mixInLength(root, requests.len);
+    for (0..n) |i| roots[i] = htDepositRequest(data[i * SIZE ..][0..SIZE]);
+    return mixInLength(sparseRoot(roots, list_depth), n);
+}
+
+fn htWithdrawalRequestList(alloc: std.mem.Allocator, data: []const u8) ![32]u8 {
+    const SIZE = 76;
+    const list_depth = 4;
+    if (data.len == 0) return mixInLength(zeroHash(list_depth), 0);
+    if (data.len % SIZE != 0) return error.InvalidSsz;
+    const n = data.len / SIZE;
+    const roots = try alloc.alloc([32]u8, n);
+    defer alloc.free(roots);
+    for (0..n) |i| roots[i] = htWithdrawalRequest(data[i * SIZE ..][0..SIZE]);
+    return mixInLength(sparseRoot(roots, list_depth), n);
+}
+
+fn htConsolidationRequestList(alloc: std.mem.Allocator, data: []const u8) ![32]u8 {
+    const SIZE = 116;
+    const list_depth = 1;
+    if (data.len == 0) return mixInLength(zeroHash(list_depth), 0);
+    if (data.len % SIZE != 0) return error.InvalidSsz;
+    const n = data.len / SIZE;
+    const roots = try alloc.alloc([32]u8, n);
+    defer alloc.free(roots);
+    for (0..n) |i| roots[i] = htConsolidationRequest(data[i * SIZE ..][0..SIZE]);
+    return mixInLength(sparseRoot(roots, list_depth), n);
+}
+
+/// hash_tree_root for SszExecutionRequests container (3 fields → pad to 4).
+fn htExecutionRequests(alloc: std.mem.Allocator, er: input.ExecutionRequests) ![32]u8 {
+    const h0 = try htDepositList(alloc, er.deposits);
+    const h1 = try htWithdrawalRequestList(alloc, er.withdrawals);
+    const h2 = try htConsolidationRequestList(alloc, er.consolidations);
+    return sha2(sha2(h0, h1), sha2(h2, [_]u8{0} ** 32));
 }
 
 /// Compute the SSZ hash_tree_root of SszNewPayloadRequest.
@@ -388,7 +459,7 @@ fn htExecutionRequests(alloc: std.mem.Allocator, requests: []const []const u8) !
 ///   execution_payload:        SszExecutionPayload
 ///   versioned_hashes:         List[Bytes32, 4096]
 ///   parent_beacon_block_root: Bytes32
-///   execution_requests:       List[ByteList[2^20], 16]
+///   execution_requests:       SszExecutionRequests
 pub fn newPayloadRequestRoot(alloc: std.mem.Allocator, req: input.NewPayloadRequest) ![32]u8 {
     const h0 = try htExecutionPayload(alloc, req.execution_payload);
     const h1 = htVersionedHashes(req.versioned_hashes);

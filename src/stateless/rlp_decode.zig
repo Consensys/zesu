@@ -363,7 +363,7 @@ fn txU64(rest: *[]const u8) error{InvalidBlock}!u64 {
 
 fn txU128(rest: *[]const u8) error{InvalidBlock}!u128 {
     const b = try txBytesView(rest);
-    if (b.len > 16) return error.InvalidBlock;
+    if (b.len > 16) return std.math.maxInt(u128);
     var v: u128 = 0;
     for (b) |byte| v = (v << 8) | byte;
     return v;

@@ -131,15 +131,24 @@ pub const ExecutionPayload = struct {
     block_access_list: []const u8 = &.{},
 };
 
+/// EIP-7685 typed execution requests (SszExecutionRequests container).
+/// Each field holds the packed fixed-size items of that request type.
+/// Populated by the SSZ decoder; all fields are empty on JSON/RLP paths.
+pub const ExecutionRequests = struct {
+    deposits: []const u8 = &.{}, // packed SszDepositRequest items (192 bytes each)
+    withdrawals: []const u8 = &.{}, // packed SszWithdrawalRequest items (76 bytes each)
+    consolidations: []const u8 = &.{}, // packed SszConsolidationRequest items (116 bytes each)
+};
+
 pub const NewPayloadRequest = struct {
     execution_payload: ExecutionPayload,
     parent_beacon_block_root: primitives.Hash,
     /// EIP-4844 blob versioned hashes from all transactions in the block.
     /// Populated by the SSZ decoder; empty slice on JSON/RLP paths.
     versioned_hashes: []const primitives.Hash = &.{},
-    /// EIP-7685 execution requests (withdrawal + consolidation requests).
-    /// Populated by the SSZ decoder; empty slice on JSON/RLP paths.
-    execution_requests: []const []const u8 = &.{},
+    /// EIP-7685 execution requests (SszExecutionRequests container).
+    /// Populated by the SSZ decoder; zero-value on JSON/RLP paths.
+    execution_requests: ExecutionRequests = .{},
 };
 
 /// Execution witness (spec-matching Amsterdam ExecutionWitness).
