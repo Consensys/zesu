@@ -8,7 +8,7 @@
 //!   SszNewPayloadRequest: 44 bytes  [4+4+32+4]
 //!   SszExecutionPayload: 540 bytes  (see EP_FIXED_SIZE)
 //!   SszExecutionWitness:  12 bytes  [4+4+4]
-//!   SszWithdrawal:        68 bytes  fixed (8+8+20+32)
+//!   SszWithdrawal:        44 bytes  fixed (8+8+20+8)
 
 const std = @import("std");
 const input_mod = @import("input");
@@ -57,15 +57,14 @@ fn decodeByteListList(alloc: std.mem.Allocator, data: []const u8) ![]const []con
 
 // ── SszWithdrawal decoder ─────────────────────────────────────────────────────
 
-/// SszWithdrawal fixed size: index(8) + validator_index(8) + address(20) + amount(uint256=32) = 68
-const WITHDRAWAL_SIZE: usize = 68;
+/// SszWithdrawal fixed size: index(8) + validator_index(8) + address(20) + amount(uint64=8) = 44
+const WITHDRAWAL_SIZE: usize = 44;
 
 fn decodeWithdrawal(bytes: *const [WITHDRAWAL_SIZE]u8) input_mod.Withdrawal {
     const index = std.mem.readInt(u64, bytes[0..8], .little);
     const validator_index = std.mem.readInt(u64, bytes[8..16], .little);
     var address: [20]u8 = undefined;
     @memcpy(&address, bytes[16..36]);
-    // amount is uint256 LE; truncate low 8 bytes to u64 (gwei fits in u64)
     const amount = std.mem.readInt(u64, bytes[36..44], .little);
     return .{
         .index = index,
@@ -144,8 +143,19 @@ pub fn decode(alloc: std.mem.Allocator, data: []const u8) !input_mod.StatelessIn
     const versioned_hashes = try alloc.alloc([32]u8, vh_count);
     for (0..vh_count) |i| @memcpy(&versioned_hashes[i], vh_bytes[i * 32 ..][0..32]);
 
-    // execution_requests: List[ByteList[2^20], 16]
-    const execution_requests = try decodeByteListList(alloc, npr_data[off_er..]);
+    // execution_requests: SszExecutionRequests container (3 variable fields, 12-byte fixed region)
+    const er_data = npr_data[off_er..];
+    if (er_data.len < 12) return error.InvalidSsz;
+    const off_deposits: usize = readU32(er_data, 0);
+    const off_withdrawals_req: usize = readU32(er_data, 4);
+    const off_consolidations: usize = readU32(er_data, 8);
+    if (off_deposits != 12) return error.InvalidSsz;
+    if (off_deposits > off_withdrawals_req or off_withdrawals_req > off_consolidations or off_consolidations > er_data.len) return error.InvalidSsz;
+    const execution_requests: input_mod.ExecutionRequests = .{
+        .deposits = er_data[off_deposits..off_withdrawals_req],
+        .withdrawals = er_data[off_withdrawals_req..off_consolidations],
+        .consolidations = er_data[off_consolidations..],
+    };
 
     // ── SszExecutionPayload fixed region (540 bytes) ──────────────────────────
     if (ep_data.len < EP_FIXED_SIZE) return error.InvalidSsz;
