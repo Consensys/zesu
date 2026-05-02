@@ -86,6 +86,8 @@ pub fn decodeBlockHeader(allocator: std.mem.Allocator, payload: []const u8) !inp
     if (rest.len > 0) hdr.excess_blob_gas = try nextUint64(&rest); // [18]
     if (rest.len > 0) hdr.parent_beacon_block_root = try nextHash(&rest); // [19]
     if (rest.len > 0) hdr.requests_hash = try nextHash(&rest); // [20]
+    if (rest.len > 0) hdr.block_access_list_hash = try nextHash(&rest); // [21]
+    if (rest.len > 0) hdr.slot_number = try nextUint64(&rest); // [22]
 
     return hdr;
 }

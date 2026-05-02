@@ -85,8 +85,9 @@ pub const BlockHeader = struct {
     parent_beacon_block_root: ?primitives.Hash, // [19]
     // EIP-7685 (Prague+)
     requests_hash: ?primitives.Hash, // [20]
-    // Amsterdam+ (slot number from beacon chain)
-    slot_number: ?u64 = null, // [21]
+    // Amsterdam+
+    block_access_list_hash: ?primitives.Hash = null, // [21]
+    slot_number: ?u64 = null, // [22]
 };
 
 /// EIP-4895 withdrawal (Shanghai+).
@@ -162,6 +163,7 @@ pub const StateWitness = struct {
 
 pub const ChainConfig = struct {
     chain_id: u64 = 1,
+    fork_name: ?[]const u8 = null,
 };
 
 /// Top-level input (matches Amsterdam spec StatelessInput).
