@@ -12,7 +12,7 @@
 
 const std = @import("std");
 const input = @import("input");
-const accel = @import("accel_impl");
+const accel = @import("accelerators");
 
 // ── SHA-256 ───────────────────────────────────────────────────────────────────
 

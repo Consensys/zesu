@@ -182,7 +182,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     ssz_output_module.addImport("input", input_module);
-    ssz_output_module.addImport("accel_impl", extern_bridge_module);
+    ssz_output_module.addImport("accelerators", accelerators_module);
 
     // executor_types: canonical EVM/block type definitions shared by executor and db.
     const executor_types_module = b.createModule(.{
