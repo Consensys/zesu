@@ -1266,19 +1266,18 @@ fn computeRequestsHash(
     withdrawals: []const u8,
     consolidations: []const u8,
 ) ![32]u8 {
+    const max_len = @max(deposits.len, @max(withdrawals.len, consolidations.len));
+    const scratch = try arena.alloc(u8, 1 + max_len);
+
     var outer_buf: [96]u8 = undefined;
     var outer_len: usize = 0;
 
-    inline for (.{ .{ 0x00, deposits }, .{ 0x01, withdrawals }, .{ 0x02, consolidations } }) |pair| {
-        const type_byte: u8 = pair[0];
+    inline for (.{ .{ @as(u8, 0x00), deposits }, .{ @as(u8, 0x01), withdrawals }, .{ @as(u8, 0x02), consolidations } }) |pair| {
         const data: []const u8 = pair[1];
         if (data.len > 0) {
-            const buf = try arena.alloc(u8, 1 + data.len);
-            buf[0] = type_byte;
-            @memcpy(buf[1..], data);
-            var inner_hash: [32]u8 = undefined;
-            accel.sha256(buf, &inner_hash);
-            @memcpy(outer_buf[outer_len..][0..32], &inner_hash);
+            scratch[0] = pair[0];
+            @memcpy(scratch[1..][0..data.len], data);
+            accel.sha256(scratch[0 .. 1 + data.len], outer_buf[outer_len..][0..32]);
             outer_len += 32;
         }
     }
