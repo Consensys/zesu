@@ -1,5 +1,6 @@
 const std = @import("std");
 const primitives = @import("primitives");
+const accel = @import("accelerators");
 const bytecode_mod = @import("bytecode");
 const context_mod = @import("context");
 const state_mod = @import("state");
@@ -783,7 +784,7 @@ fn setupCreateCore(
 
     const new_addr: primitives.Address = if (is_create2) blk: {
         var init_hash: [32]u8 = undefined;
-        std.crypto.hash.sha3.Keccak256.hash(init_code, &init_hash, .{});
+        accel.keccak256(init_code, &init_hash);
         break :blk create2Address(caller, salt, init_hash);
     } else createAddress(caller, caller_nonce);
 
@@ -915,7 +916,7 @@ fn finalizeCreateCore(
             return CreateResult.failure();
         };
         var code_hash: [32]u8 = undefined;
-        std.crypto.hash.sha3.Keccak256.hash(deployed_copy, &code_hash, .{});
+        accel.keccak256(deployed_copy, &code_hash);
         const bc = bytecode_mod.Bytecode.newRaw(deployed_copy);
         js.setCodeWithHash(new_addr, bc, code_hash);
     }
@@ -1008,7 +1009,7 @@ pub fn createAddress(sender: primitives.Address, nonce: u64) primitives.Address 
     rlp[0] = @intCast(0xC0 + pos);
     @memcpy(rlp[1 .. 1 + pos], buf[0..pos]);
     var hash: [32]u8 = undefined;
-    std.crypto.hash.sha3.Keccak256.hash(rlp[0 .. 1 + pos], &hash, .{});
+    accel.keccak256(rlp[0 .. 1 + pos], &hash);
     var addr: primitives.Address = undefined;
     @memcpy(&addr, hash[12..32]);
     return addr;
@@ -1029,7 +1030,7 @@ pub fn create2Address(sender: primitives.Address, salt: primitives.U256, init_co
     @memcpy(preimage[21..53], &salt_bytes);
     @memcpy(preimage[53..85], &init_code_hash);
     var hash: [32]u8 = undefined;
-    std.crypto.hash.sha3.Keccak256.hash(&preimage, &hash, .{});
+    accel.keccak256(&preimage, &hash);
     var addr: primitives.Address = undefined;
     @memcpy(&addr, hash[12..32]);
     return addr;

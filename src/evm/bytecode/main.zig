@@ -1,6 +1,7 @@
 const std = @import("std");
 const primitives = @import("primitives");
 const alloc_mod = @import("zesu_allocator");
+const accel = @import("accelerators");
 
 /// EVM opcode definitions and utilities. It contains opcode information and utilities to work with opcodes.
 /// An EVM opcode
@@ -534,7 +535,7 @@ pub const Bytecode = union(enum) {
                 // Avoids the dangling-pointer that arises when routing through raw() which
                 // takes Self by value and returns &self.raw_bytes into its own stack frame.
                 var hash: primitives.Hash = undefined;
-                std.crypto.hash.sha3.Keccak256.hash(&eip7702.raw_bytes, &hash, .{});
+                accel.keccak256(&eip7702.raw_bytes, &hash);
                 return hash;
             },
             .legacy_analyzed => {
@@ -543,7 +544,7 @@ pub const Bytecode = union(enum) {
                 }
                 const bytes = self.originalBytes();
                 var hash: primitives.Hash = undefined;
-                std.crypto.hash.sha3.Keccak256.hash(bytes, &hash, .{});
+                accel.keccak256(bytes, &hash);
                 return hash;
             },
         }

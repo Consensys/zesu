@@ -106,6 +106,7 @@ pub fn build(b: *std.Build) void {
     });
     bytecode_module.addImport("primitives", primitives_module);
     bytecode_module.addImport("zesu_allocator", zesu_allocator_module);
+    bytecode_module.addImport("accelerators", accelerators_module);
 
     const state_module = b.createModule(.{
         .root_source_file = b.path("src/evm/state/main.zig"),
