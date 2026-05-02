@@ -1188,7 +1188,7 @@ pub fn transitionWithContext(
 
     // ── EIP-7685 requests_hash ────────────────────────────────────────────────
     const deposits = if (primitives.isEnabledIn(spec, .prague)) try collectDeposits(arena, receipts.items) else &.{};
-    const requests_hash = computeRequestsHash(deposits, post_block_reqs.withdrawal_requests, post_block_reqs.consolidation_requests);
+    const requests_hash = try computeRequestsHash(arena, deposits, post_block_reqs.withdrawal_requests, post_block_reqs.consolidation_requests);
 
     return TransitionResult{
         .alloc = post_alloc,
@@ -1261,28 +1261,31 @@ fn collectDeposits(arena: std.mem.Allocator, receipts: []const Receipt) error{In
 /// Hash = SHA256(SHA256(0x00||deposits) || SHA256(0x01||withdrawals) || SHA256(0x02||consolidations))
 /// where each type is omitted if its data is empty.
 fn computeRequestsHash(
+    arena: std.mem.Allocator,
     deposits: []const u8,
     withdrawals: []const u8,
     consolidations: []const u8,
-) [32]u8 {
-    const Sha256 = std.crypto.hash.sha2.Sha256;
-    var outer = Sha256.init(.{});
-    hashRequestType(&outer, 0x00, deposits);
-    hashRequestType(&outer, 0x01, withdrawals);
-    hashRequestType(&outer, 0x02, consolidations);
-    var result: [32]u8 = undefined;
-    outer.final(&result);
-    return result;
-}
+) ![32]u8 {
+    var outer_buf: [96]u8 = undefined;
+    var outer_len: usize = 0;
 
-fn hashRequestType(outer: *std.crypto.hash.sha2.Sha256, type_byte: u8, data: []const u8) void {
-    if (data.len == 0) return;
-    var inner = std.crypto.hash.sha2.Sha256.init(.{});
-    inner.update(&[_]u8{type_byte});
-    inner.update(data);
-    var inner_hash: [32]u8 = undefined;
-    inner.final(&inner_hash);
-    outer.update(&inner_hash);
+    inline for (.{ .{ 0x00, deposits }, .{ 0x01, withdrawals }, .{ 0x02, consolidations } }) |pair| {
+        const type_byte: u8 = pair[0];
+        const data: []const u8 = pair[1];
+        if (data.len > 0) {
+            const buf = try arena.alloc(u8, 1 + data.len);
+            buf[0] = type_byte;
+            @memcpy(buf[1..], data);
+            var inner_hash: [32]u8 = undefined;
+            accel.sha256(buf, &inner_hash);
+            @memcpy(outer_buf[outer_len..][0..32], &inner_hash);
+            outer_len += 32;
+        }
+    }
+
+    var result: [32]u8 = undefined;
+    accel.sha256(outer_buf[0..outer_len], &result);
+    return result;
 }
 
 // ─── Post-state extraction ────────────────────────────────────────────────────

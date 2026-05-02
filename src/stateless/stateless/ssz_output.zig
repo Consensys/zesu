@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const input = @import("input");
+const accel = @import("accel_impl");
 
 // ── SHA-256 ───────────────────────────────────────────────────────────────────
 
@@ -20,13 +21,13 @@ fn sha2(a: [32]u8, b: [32]u8) [32]u8 {
     @memcpy(buf[0..32], &a);
     @memcpy(buf[32..64], &b);
     var out: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(&buf, &out, .{});
+    accel.sha256(&buf, &out);
     return out;
 }
 
 fn sha2Bytes(data: []const u8) [32]u8 {
     var out: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(data, &out, .{});
+    accel.sha256(data, &out);
     return out;
 }
 
