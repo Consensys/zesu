@@ -176,6 +176,14 @@ pub fn build(b: *std.Build) void {
     // Wire deferred mpt dependency into rlp_decode.
     rlp_decode_module.addImport("mpt", mpt_module);
 
+    const ssz_decode_module = b.addModule("ssz_decode", .{
+        .root_source_file = b.path("../src/stateless/stateless/ssz.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ssz_decode_module.addImport("input", input_module);
+    ssz_decode_module.addImport("rlp_decode", rlp_decode_module);
+
     const ssz_output_module = b.addModule("ssz_output", .{
         .root_source_file = b.path("../src/stateless/stateless/ssz_output.zig"),
         .target = target,
