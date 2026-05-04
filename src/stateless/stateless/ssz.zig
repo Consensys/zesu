@@ -100,23 +100,41 @@ const EP_FIXED_SIZE: usize = 540;
 
 /// Decode an SSZ-serialized SszStatelessInput into a StatelessInput.
 pub fn decode(alloc: std.mem.Allocator, data: []const u8) !input_mod.StatelessInput {
-    // ── SszStatelessInput fixed region (20 bytes) ─────────────────────────────
-    // [0..4]   offset → new_payload_request (variable)
-    // [4..8]   offset → witness (variable)
-    // [8..16]  chain_config.chain_id (uint64, fixed inline)
-    // [16..20] offset → public_keys (variable)
+    // ── SszStatelessInput fixed region ────────────────────────────────────────
+    // Base layout (20 bytes, off_npr == 20):
+    //   [0..4]   offset → new_payload_request (variable)
+    //   [4..8]   offset → witness (variable)
+    //   [8..16]  chain_config.chain_id (uint64, fixed inline)
+    //   [16..20] offset → public_keys (variable)
+    //
+    // Extended layout (24 bytes, off_npr == 24) — adds fork_name field:
+    //   [0..4]   offset → new_payload_request (variable)
+    //   [4..8]   offset → witness (variable)
+    //   [8..16]  chain_config.chain_id (uint64, fixed inline)
+    //   [16..20] offset → public_keys (variable)
+    //   [20..24] offset → fork_name (ByteList, variable)
     if (data.len < 20) return error.InvalidSsz;
     const off_npr: usize = readU32(data, 0);
     const off_witness: usize = readU32(data, 4);
     const chain_id: u64 = readU64(data, 8);
     const off_pubkeys: usize = readU32(data, 16);
 
-    if (off_npr < 20 or off_witness > data.len or off_pubkeys > data.len) return error.InvalidSsz;
+    // Detect extended layout: off_npr == 24 signals the fork_name field is present.
+    const has_fork_name = (off_npr == 24);
+    const min_fixed: usize = if (has_fork_name) 24 else 20;
+    if (data.len < min_fixed) return error.InvalidSsz;
+
+    const off_fork_name: usize = if (has_fork_name) readU32(data, 20) else data.len;
+
+    if (off_npr < min_fixed or off_witness > data.len or off_pubkeys > data.len) return error.InvalidSsz;
+    if (has_fork_name and off_fork_name > data.len) return error.InvalidSsz;
     if (off_npr >= off_witness or off_witness > off_pubkeys) return error.InvalidSsz;
+    if (has_fork_name and off_pubkeys > off_fork_name) return error.InvalidSsz;
 
     const npr_data = data[off_npr..off_witness];
     const witness_data = data[off_witness..off_pubkeys];
-    const pubkeys_data = data[off_pubkeys..];
+    const pubkeys_data = if (has_fork_name) data[off_pubkeys..off_fork_name] else data[off_pubkeys..];
+    const fork_name_bytes = if (has_fork_name) data[off_fork_name..] else &[_]u8{};
 
     // ── SszNewPayloadRequest fixed region (44 bytes) ──────────────────────────
     // [0..4]   offset → execution_payload (variable)
@@ -281,7 +299,10 @@ pub fn decode(alloc: std.mem.Allocator, data: []const u8) !input_mod.StatelessIn
             .codes = codes,
             .headers = headers,
         },
-        .chain_config = .{ .chain_id = if (chain_id != 0) chain_id else 1 },
+        .chain_config = .{
+            .chain_id = if (chain_id != 0) chain_id else 1,
+            .fork_name = if (fork_name_bytes.len > 0) fork_name_bytes else null,
+        },
         .public_keys = public_keys,
     };
 }

@@ -150,7 +150,7 @@ pub fn main(init: std.process.Init) !void {
         si.new_payload_request,
         si.witness.codes,
         block_hashes.items,
-        fork_name,
+        fork_name orelse si.chain_config.fork_name,
         si.chain_config.chain_id,
         si.public_keys,
     ) catch |err| {
