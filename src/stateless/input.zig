@@ -54,10 +54,11 @@ pub const Transaction = struct {
     s: u256,
 };
 
-/// Full Ethereum block header (post-Cancun, up to and including Osaka/Prague).
+/// Full Ethereum block header (post-Cancun, up to and including Amsterdam).
 ///
-/// Fields are listed in their canonical RLP order (indices 0–20).
+/// Fields are listed in their canonical RLP order (indices 0–22).
 /// Optional fields (15+) are absent in pre-London blocks.
+/// Amsterdam adds block_access_list_hash [21] (EIP-7917) and slot_number [22].
 pub const BlockHeader = struct {
     parent_hash: primitives.Hash, // [0]
     ommers_hash: primitives.Hash, // [1]  always KECCAK_EMPTY_LIST in PoS
@@ -85,8 +86,9 @@ pub const BlockHeader = struct {
     parent_beacon_block_root: ?primitives.Hash, // [19]
     // EIP-7685 (Prague+)
     requests_hash: ?primitives.Hash, // [20]
-    // Amsterdam+ (slot number from beacon chain)
-    slot_number: ?u64 = null, // [21]
+    // Amsterdam+
+    block_access_list_hash: ?primitives.Hash = null, // [21]
+    slot_number: ?u64 = null, // [22]
 };
 
 /// EIP-4895 withdrawal (Shanghai+).
@@ -171,6 +173,11 @@ pub const StateWitness = struct {
 
 pub const ChainConfig = struct {
     chain_id: u64 = 1,
+    /// Fork hint carried by the input (e.g. populated by the SSZ extended layout).
+    /// Precedence at the executor entry points: an explicit `fork_name` argument
+    /// (e.g. the `--fork` CLI override) wins; otherwise this field is used; if both
+    /// are null, the executor falls back to mainnet timestamp-based spec lookup.
+    fork_name: ?[]const u8 = null,
 };
 
 /// Top-level input (matches Amsterdam spec StatelessInput).
