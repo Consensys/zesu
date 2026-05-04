@@ -130,11 +130,6 @@ pub fn parseBlockAndWitness(
     };
 }
 
-/// Parse a raw RLP-encoded block into a ParsedBlock (used by the binary stdin path).
-pub fn parseBlockFromRlp(allocator: std.mem.Allocator, raw: []const u8) !ParsedBlock {
-    return decodeBlock(allocator, raw);
-}
-
 // ─── Block RLP decoder ─────────────────────────────────────────────────────────
 
 /// Decode a full Ethereum block (outer RLP wrapper) into header + transactions.
