@@ -11,9 +11,7 @@ const alloc_mod = @import("zesu_allocator");
 const zkvm_io = @import("zkvm_io");
 
 const InputSource = union(enum) {
-    rlp_stream, // default: zkvm_io.read_input()
-    ssz_stream, // --ssz (no file)
-    rlp_file: []const u8, // --rlp <file>
+    ssz_stream, // default: zkvm_io.read_input()
     ssz_file: []const u8, // --ssz <file>
     json: struct { block: []const u8, witness: []const u8 }, // --json <b> <w>
 };
@@ -24,7 +22,7 @@ pub fn main(init: std.process.Init) !void {
 
     // ── Arg parsing ───────────────────────────────────────────────────────────
     var fork_name: ?[]const u8 = null;
-    var source: InputSource = .rlp_stream;
+    var source: InputSource = .ssz_stream;
 
     var arg_i: usize = 1;
     while (arg_i < args.len) : (arg_i += 1) {
@@ -38,14 +36,6 @@ pub fn main(init: std.process.Init) !void {
                 std.process.exit(1);
             }
             fork_name = args[arg_i];
-        } else if (std.mem.eql(u8, arg, "--rlp")) {
-            arg_i += 1;
-            if (arg_i >= args.len or std.mem.startsWith(u8, args[arg_i], "--")) {
-                std.debug.print("error: --rlp requires a file path\n", .{});
-                printUsage();
-                std.process.exit(1);
-            }
-            source = .{ .rlp_file = args[arg_i] };
         } else if (std.mem.eql(u8, arg, "--ssz")) {
             // --ssz may optionally be followed by a file path
             if (arg_i + 1 < args.len and !std.mem.startsWith(u8, args[arg_i + 1], "--")) {
@@ -72,7 +62,7 @@ pub fn main(init: std.process.Init) !void {
             source = .{ .json = .{ .block = block_path, .witness = witness_path } };
         } else {
             std.debug.print("error: unexpected argument '{s}'\n", .{arg});
-            std.debug.print("hint:  use --json <block> <witness>, --rlp <file>, or --ssz [file]\n", .{});
+            std.debug.print("hint:  use --json <block> <witness> or --ssz [file]\n", .{});
             printUsage();
             std.process.exit(1);
         }
@@ -80,17 +70,8 @@ pub fn main(init: std.process.Init) !void {
 
     // ── Load input ────────────────────────────────────────────────────────────
     const si: input.StatelessInput = switch (source) {
-        .rlp_stream => io.fromRlpStream(allocator) catch |err| {
-            std.debug.print("error: failed to parse RLP from zkvm_io.read_input(): {}\n", .{err});
-            std.debug.print("hint:  pipe a zevm-zisk binary StatelessInput, or use --rlp/--json flags\n", .{});
-            std.process.exit(1);
-        },
         .ssz_stream => io.fromSszStream(allocator) catch |err| {
             std.debug.print("error: failed to parse SSZ from zkvm_io.read_input(): {}\n", .{err});
-            std.process.exit(1);
-        },
-        .rlp_file => |path| io.fromRlpFile(init.io, allocator, path) catch |err| {
-            std.debug.print("error: failed to parse RLP from '{s}': {}\n", .{ path, err });
             std.process.exit(1);
         },
         .ssz_file => |path| io.fromSszFile(init.io, allocator, path) catch |err| {
@@ -203,13 +184,13 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     }
 
-    // Emit output: SSZ 41-byte commitment for SSZ inputs; JSON summary for dev paths.
+    // Emit output: SSZ 41-byte commitment for SSZ inputs; JSON summary for the dev --json path.
     switch (source) {
         .ssz_stream, .ssz_file => {
             const ssz_bytes = try ssz_output.serialize(allocator, si.new_payload_request, si.chain_config.chain_id, true);
             zkvm_io.write_output(&ssz_bytes);
         },
-        else => {
+        .json => {
             var out_buf: [512]u8 = undefined;
             const out = try std.fmt.bufPrint(
                 &out_buf,
@@ -270,10 +251,8 @@ fn loadFromJson(my_io: std.Io, allocator: std.mem.Allocator, block_path: []const
 fn printUsage() void {
     std.debug.print(
         \\usage:
-        \\  zevm_stateless [--fork F]                              # RLP from zkvm_io (default / zkVM)
-        \\  zevm_stateless --ssz [--fork F]                        # SSZ from zkvm_io (stub)
-        \\  zevm_stateless --rlp <file> [--fork F]                 # RLP binary file
-        \\  zevm_stateless --ssz <file> [--fork F]                 # SSZ binary file (stub)
+        \\  zevm_stateless [--fork F]                              # SSZ from zkvm_io (default / zkVM)
+        \\  zevm_stateless --ssz <file> [--fork F]                 # SSZ binary file
         \\  zevm_stateless --json <block.json> <witness.json> [--fork F]
         \\
     , .{});
