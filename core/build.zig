@@ -51,6 +51,7 @@ pub fn build(b: *std.Build) void {
     });
     bytecode_module.addImport("primitives", primitives_module);
     bytecode_module.addImport("zesu_allocator", zesu_allocator_module);
+    bytecode_module.addImport("accelerators", accelerators_module);
 
     const state_module = b.addModule("state", .{
         .root_source_file = b.path("../src/evm/state/main.zig"),
@@ -174,6 +175,14 @@ pub fn build(b: *std.Build) void {
 
     // Wire deferred mpt dependency into rlp_decode.
     rlp_decode_module.addImport("mpt", mpt_module);
+
+    const ssz_output_module = b.addModule("ssz_output", .{
+        .root_source_file = b.path("../src/stateless/stateless/ssz_output.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ssz_output_module.addImport("input", input_module);
+    ssz_output_module.addImport("accelerators", accelerators_module);
 
     // executor_types: canonical EVM/block type definitions shared by executor and db.
     const executor_types_module = b.createModule(.{

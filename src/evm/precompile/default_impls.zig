@@ -297,7 +297,7 @@ fn kzgPointEvalRun(input: []const u8, gas_limit: u64) T.PrecompileResult {
 
     // versioned_hash must equal SHA-256(commitment) with version byte prepended
     var computed_hash: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(commitment, &computed_hash, .{});
+    accel.sha256(commitment, &computed_hash);
     computed_hash[0] = VERSIONED_HASH_VERSION_KZG;
     if (!std.mem.eql(u8, versioned_hash, &computed_hash))
         return .{ .err = T.PrecompileError.BlobMismatchedVersion };

@@ -106,6 +106,7 @@ pub fn build(b: *std.Build) void {
     });
     bytecode_module.addImport("primitives", primitives_module);
     bytecode_module.addImport("zesu_allocator", zesu_allocator_module);
+    bytecode_module.addImport("accelerators", accelerators_module);
 
     const state_module = b.createModule(.{
         .root_source_file = b.path("src/evm/state/main.zig"),
@@ -282,6 +283,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     ssz_output_module.addImport("input", input_module);
+    ssz_output_module.addImport("accelerators", accelerators_module);
 
     // ── zevm_stateless binary ─────────────────────────────────────────────────
 
@@ -299,6 +301,7 @@ pub fn build(b: *std.Build) void {
     stateless_exe.root_module.addImport("executor", executor_module);
     stateless_exe.root_module.addImport("zesu_allocator", zesu_allocator_module);
     stateless_exe.root_module.addImport("zkvm_io", zkvm_io_module);
+    stateless_exe.root_module.addImport("accelerators", accelerators_module);
     addCryptoLibraries(stateless_exe, crypto_include, libblst_path, libmcl_path, is_linux);
     b.installArtifact(stateless_exe);
     addRunStep(b, "run", "Run the zevm_stateless app", stateless_exe, &.{});
