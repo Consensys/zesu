@@ -562,3 +562,129 @@ fn nextUint256(rest: *[]const u8) error{InvalidBlock}!u256 {
     rest.* = rest.*[r.consumed..];
     return v;
 }
+
+// ─── Unit tests ────────────────────────────────────────────────────────────────
+
+/// Append an RLP-encoded byte string of length ≤ 55.
+fn appendShortBytes(buf: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator, b: []const u8) !void {
+    try buf.append(alloc, 0x80 + @as(u8, @intCast(b.len)));
+    try buf.appendSlice(alloc, b);
+}
+
+/// Append an RLP-encoded byte string of any length.
+fn appendBytes(buf: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator, b: []const u8) !void {
+    if (b.len == 0) {
+        try buf.append(alloc, 0x80);
+    } else if (b.len == 1 and b[0] < 0x80) {
+        try buf.append(alloc, b[0]);
+    } else if (b.len <= 55) {
+        try appendShortBytes(buf, alloc, b);
+    } else {
+        var len_be: [8]u8 = undefined;
+        std.mem.writeInt(u64, &len_be, b.len, .big);
+        var i: usize = 0;
+        while (i < 8 and len_be[i] == 0) : (i += 1) {}
+        const compact = len_be[i..];
+        try buf.append(alloc, 0xb7 + @as(u8, @intCast(compact.len)));
+        try buf.appendSlice(alloc, compact);
+        try buf.appendSlice(alloc, b);
+    }
+}
+
+/// Append an RLP-encoded unsigned integer (compact, no leading zeros).
+fn appendUint(buf: *std.ArrayListUnmanaged(u8), alloc: std.mem.Allocator, v: u64) !void {
+    if (v == 0) {
+        try buf.append(alloc, 0x80);
+        return;
+    }
+    var be: [8]u8 = undefined;
+    std.mem.writeInt(u64, &be, v, .big);
+    var i: usize = 0;
+    while (i < 8 and be[i] == 0) : (i += 1) {}
+    try appendBytes(buf, alloc, be[i..]);
+}
+
+/// Build a header RLP payload with the given list of optional trailing fields appended
+/// after the 15 mandatory fields (parent_hash..nonce). Returns owned bytes.
+fn buildHeaderPayload(alloc: std.mem.Allocator, opt_trailers: []const u8) ![]u8 {
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer buf.deinit(alloc);
+
+    const zero_hash: [32]u8 = @splat(0);
+    const zero_addr: [20]u8 = @splat(0);
+    const zero_bloom: [256]u8 = @splat(0);
+
+    try appendBytes(&buf, alloc, &zero_hash); // [0] parent_hash
+    try appendBytes(&buf, alloc, &zero_hash); // [1] ommers_hash
+    try appendBytes(&buf, alloc, &zero_addr); // [2] beneficiary
+    try appendBytes(&buf, alloc, &zero_hash); // [3] state_root
+    try appendBytes(&buf, alloc, &zero_hash); // [4] transactions_root
+    try appendBytes(&buf, alloc, &zero_hash); // [5] receipts_root
+    try appendBytes(&buf, alloc, &zero_bloom); // [6] logs_bloom
+    try appendUint(&buf, alloc, 0); // [7] difficulty
+    try appendUint(&buf, alloc, 1234); // [8] number
+    try appendUint(&buf, alloc, 30_000_000); // [9] gas_limit
+    try appendUint(&buf, alloc, 21_000); // [10] gas_used
+    try appendUint(&buf, alloc, 1_700_000_000); // [11] timestamp
+    try appendBytes(&buf, alloc, &.{}); // [12] extra_data (empty)
+    try appendBytes(&buf, alloc, &zero_hash); // [13] mix_hash
+    try appendUint(&buf, alloc, 0); // [14] nonce
+    try buf.appendSlice(alloc, opt_trailers);
+
+    return buf.toOwnedSlice(alloc);
+}
+
+test "decodeBlockHeader: post-Prague header has Amsterdam fields null" {
+    const alloc = std.testing.allocator;
+    const zero_hash: [32]u8 = @splat(0);
+
+    var trailers: std.ArrayListUnmanaged(u8) = .empty;
+    defer trailers.deinit(alloc);
+    try appendUint(&trailers, alloc, 7); // [15] base_fee_per_gas
+    try appendBytes(&trailers, alloc, &zero_hash); // [16] withdrawals_root
+    try appendUint(&trailers, alloc, 0); // [17] blob_gas_used
+    try appendUint(&trailers, alloc, 0); // [18] excess_blob_gas
+    try appendBytes(&trailers, alloc, &zero_hash); // [19] parent_beacon_block_root
+    try appendBytes(&trailers, alloc, &zero_hash); // [20] requests_hash
+
+    const payload = try buildHeaderPayload(alloc, trailers.items);
+    defer alloc.free(payload);
+
+    const hdr = try decodeBlockHeader(alloc, payload);
+    defer alloc.free(hdr.extra_data);
+
+    try std.testing.expectEqual(@as(u64, 1234), hdr.number);
+    try std.testing.expectEqual(@as(?u64, 7), hdr.base_fee_per_gas);
+    try std.testing.expect(hdr.requests_hash != null);
+    try std.testing.expectEqual(@as(?primitives.Hash, null), hdr.block_access_list_hash);
+    try std.testing.expectEqual(@as(?u64, null), hdr.slot_number);
+}
+
+test "decodeBlockHeader: Amsterdam header decodes block_access_list_hash and slot_number" {
+    const alloc = std.testing.allocator;
+    const zero_hash: [32]u8 = @splat(0);
+    var bal_hash: [32]u8 = @splat(0);
+    bal_hash[31] = 0xab;
+
+    var trailers: std.ArrayListUnmanaged(u8) = .empty;
+    defer trailers.deinit(alloc);
+    try appendUint(&trailers, alloc, 7); // [15] base_fee_per_gas
+    try appendBytes(&trailers, alloc, &zero_hash); // [16] withdrawals_root
+    try appendUint(&trailers, alloc, 0); // [17] blob_gas_used
+    try appendUint(&trailers, alloc, 0); // [18] excess_blob_gas
+    try appendBytes(&trailers, alloc, &zero_hash); // [19] parent_beacon_block_root
+    try appendBytes(&trailers, alloc, &zero_hash); // [20] requests_hash
+    try appendBytes(&trailers, alloc, &bal_hash); // [21] block_access_list_hash
+    try appendUint(&trailers, alloc, 4242); // [22] slot_number
+
+    const payload = try buildHeaderPayload(alloc, trailers.items);
+    defer alloc.free(payload);
+
+    const hdr = try decodeBlockHeader(alloc, payload);
+    defer alloc.free(hdr.extra_data);
+
+    try std.testing.expectEqual(@as(u64, 1234), hdr.number);
+    try std.testing.expect(hdr.block_access_list_hash != null);
+    try std.testing.expectEqualSlices(u8, &bal_hash, &hdr.block_access_list_hash.?);
+    try std.testing.expectEqual(@as(?u64, 4242), hdr.slot_number);
+}
