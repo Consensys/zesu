@@ -374,9 +374,6 @@ pub fn executeBlockStateless(
 
     const spec = if (fork_name) |name|
         fork_mod.specForBlock(name, ep.timestamp) orelse fork_mod.mainnetSpec(ep.block_number, ep.timestamp)
-    else if (ep.slot_number != null)
-        // slot_number presence signals Amsterdam (or later) block.
-        primitives.SpecId.amsterdam
     else
         fork_mod.mainnetSpec(ep.block_number, ep.timestamp);
 
